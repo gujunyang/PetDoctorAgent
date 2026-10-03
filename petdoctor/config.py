@@ -21,7 +21,8 @@ load_dotenv()
 _enable_utf8_stdout()
 
 # ── 路径与 RAG 配置 ────────────────────────────────────────────────────────
-PROJECT_ROOT = Path(__file__).resolve().parent
+# config.py 位于 petdoctor/ 包内，项目根目录是其上一级
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"  # download_data.py 写入
 MANUAL_DIR = DATA_DIR / "manual"  # 人工补充资料
