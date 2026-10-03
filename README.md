@@ -1,7 +1,7 @@
 # PetDoctorAgent · 宠物问诊多 Agent 系统
 
-基于 **LangGraph** 的宠物店问诊助手：由 Supervisor 调度 4 个专家 Agent（问诊 / 产品推荐 / 预约 / 安全审查），
-结合 **RAG 知识库**、**PostgreSQL 短期+长期记忆** 与 **MCP 业务工具**，面向宠物症状咨询、用药推荐与门店预约场景。
+基于 **LangGraph** 的宠物店问诊助手：由 Supervisor 调度 5 个专家 Agent（问诊 / 产品推荐 / 预约 / 安全审查 / 病历查询），
+结合 **RAG 知识库**、**PostgreSQL 短期+长期记忆** 与 **MCP 业务工具**，覆盖宠物症状咨询、用药推荐、门店预约与病历查询场景。
 
 > ⚠️ 本项目仅用于技术演示，不能替代执业兽医诊断；涉及处方药或紧急情况请及时就医。
 
@@ -11,7 +11,8 @@
 
 ## 功能特性
 
-- **Supervisor + 4 Worker**：多 Agent 协作，按用户意图动态路由。
+- **Supervisor + 5 Worker**：多 Agent 协作，按用户意图动态路由（问诊 / 产品推荐 / 预约 / 安全审查 / 病历查询）。
+- **宠物识别**：每段会话先确认「这次是哪只宠物」，核对档案并载入其历史案例。
 - **RAG 检索增强**：RAGMill 本地向量库（SQLite）+ 多语言 embedding + 查询时中文翻译。
 - **记忆系统**：PostgresSaver（会话短期记忆，按 `thread_id`）+ PostgresStore（跨会话长期记忆）。
 - **MCP 业务工具**：独立的宠物店 MCP Server（streamable-http）提供预约、库存、病历工具。
@@ -37,14 +38,15 @@
                             │  分诊调度 / 路由    │  ② 结构化输出 next_agent
                             └─────────┬─────────┘
                    条件边 next_agent   │
-        ┌───────────────┬─────────────┼───────────────┬──────────────┐
-        ▼               ▼             ▼               ▼              ▼
- ask_symptom    recommend_product  appointment    safe_check       END
-   (问诊)            (产品推荐)        (预约)         (安全审查)    (闲聊/结束)
-    │  RAG+病历       │  RAG+库存      │  预约工具       │ 规则+LLM
-    └───────────────┴───────────────┘               │
-                    返回 supervisor (循环)            └──▶ END
-                                                    (safe/warning 写入历史)
+   ┌───────────┬───────────┬───────────┬───────────┬───────────┬───────┐
+   ▼           ▼           ▼           ▼           ▼           ▼
+ask_symptom  recommend  appointment  record    safe_check    END
+ (问诊)      (产品推荐)   (预约)     (病历查询)  (安全审查)  (闲聊/结束)
+  RAG+病历    RAG+库存    预约工具    档案+MCP    规则+LLM
+   │           │           │           │
+   └───────────┴───────────┴───────────┘
+              返回 supervisor (循环)        safe_check / record → END
+                                            (safe/warning 写入历史)
 ```
 
 - **State**：`petdoctor/state.py:PetClinicState`（`messages / pet_profile / symptoms / diagnosis /
@@ -72,13 +74,15 @@ PetDoctorAgent/
 │   ├── config.py                 # 环境变量 / LLM / RAG 路径配置
 │   ├── state.py                  # PetClinicState + 结构化输出模型
 │   ├── memory.py                 # 记忆系统（PostgresSaver + PostgresStore，含内存回退）
+│   ├── identity.py               # 宠物识别节点（每会话确认是哪只宠物）
 │   ├── graph.py                  # 图组装 + 执行轨迹日志(TraceLogger)
 │   ├── agents/                   # Supervisor + Worker Agents
 │   │   ├── supervisor.py         # 分诊调度 + 对话摘要压缩
 │   │   ├── ask_symptom.py        # 问诊（RAG Top-3 注入 + 病历工具）
 │   │   ├── recommend_product.py  # 产品推荐（RAG + 库存工具）
 │   │   ├── appointment.py        # 预约（MCP 工具）
-│   │   └── safe_check.py         # 安全审查（规则 + LLM）
+│   │   ├── safe_check.py         # 安全审查（规则 + LLM）
+│   │   └── record.py             # 病历查询（汇总档案/历史/门诊病历）
 │   ├── tools/
 │   │   ├── rag.py                # pet_knowledge_search（RAGMill 检索 + 中文翻译）
 │   │   └── mcp_client.py         # MCP 客户端（异步工具 → 同步桥接）
@@ -94,6 +98,7 @@ PetDoctorAgent/
 │   ├── raw/                      # 原始语料（不入库）
 │   ├── manual/                   # 人工补充资料
 │   └── rag/                      # 向量库 pet_knowledge.db（不入库）
+├── docs/                         # USER_GUIDE.md / DEVELOPMENT_LOG.md
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -187,7 +192,7 @@ powershell -ExecutionPolicy Bypass -File scripts\start_mcp.ps1
 | `LLM_API_KEY` | 模型 API Key | — |
 | `LLM_BASE_URL` | OpenAI 兼容端点 | `https://api.openai.com/v1` |
 | `LLM_DISABLE_THINKING` | 对 DeepSeek 关闭思考模式（其不支持强制 tool_choice） | `1` |
-| `TAVILY_API_KEY` | Tavily 搜索（可选，保留） | — |
+| `TAVILY_API_KEY` | Tavily 搜索（**当前代码未使用**，历史保留） | — |
 | `DATABASE_URL` | Postgres 连接串（短期+长期记忆共用） | 空（回退内存） |
 | `PET_USER_ID` | 默认用户 ID | `default` |
 | `PET_STORE_MCP_URL` | MCP Server 地址 | `http://localhost:8000/mcp` |
@@ -212,8 +217,9 @@ powershell -ExecutionPolicy Bypass -File scripts\start_mcp.ps1
 
 - Namespace 设计：
   - `("users", user_id, "profile")` 用户基本信息
-  - `("users", user_id, "pets", pet_id)` 宠物档案（品种、年龄、体重、过敏史、既往病史）
-  - `("users", user_id, "history")` 历史问诊摘要
+  - `("users", user_id, "pets", pet_id)` 宠物档案（品种、年龄、体重、过敏史、既往病史，key=`profile`）
+  - `("users", user_id, "pets", pet_id, "history")` 该宠物问诊历史（按宠物隔离）
+  - `("users", user_id, "history")` 用户级历史（未识别宠物时的回退）
 - `load_memory` 节点在每轮开始注入宠物档案；`safe_check_agent` 在 `safe`/`warning` 时写回历史。
 - 未配置/连接失败自动回退 `InMemorySaver` / `InMemoryStore`。
 
@@ -223,7 +229,7 @@ powershell -ExecutionPolicy Bypass -File scripts\start_mcp.ps1
 - 多语言模型支持中英文检索；检索结果可查询时翻译为中文（`PET_RAG_TRANSLATE`）。
 - 问诊节点预检索 **Top-3** 注入上下文，控制注入长度。
 
-### MCP（`mcp_server/server.py` + `tools/mcp_client.py`）
+### MCP（`petdoctor/mcp_server/server.py` + `petdoctor/tools/mcp_client.py`）
 
 | 工具 | 说明 |
 |------|------|

@@ -9,8 +9,8 @@
 
 ## 一、项目定位
 
-基于 **LangGraph** 的宠物店问诊多 Agent 系统：Supervisor 调度 4 个专家 Agent
-（问诊 / 产品推荐 / 预约 / 安全审查），结合 RAG 知识库、PostgreSQL 短期+长期记忆、
+基于 **LangGraph** 的宠物店问诊多 Agent 系统：Supervisor 调度 5 个专家 Agent
+（问诊 / 产品推荐 / 预约 / 安全审查 / 病历查询），结合 RAG 知识库、PostgreSQL 短期+长期记忆、
 MCP 业务工具，覆盖症状咨询、用药推荐、门店预约、病历查询与安全兜底。
 
 - 使用者文档：`docs/USER_GUIDE.md`
@@ -58,7 +58,7 @@ PetDoctorAgent/
 │   └── mcp_server/server.py   # 宠物店 MCP Server（streamable-http :8000）
 ├── main.py                    # CLI 入口
 ├── scripts/                   # download_data / build_rag / start_mcp.* / pg.ps1
-├── data/{raw,manual,rag}/     # 语料 / 人工资料 / 向量库（后两者不入库）
+├── data/{raw,manual,rag}/     # 语料 / 人工资料 / 向量库（raw 与 rag 不入库）
 ├── docs/                      # USER_GUIDE.md / DEVELOPMENT_LOG.md
 ├── requirements.txt  .env.example  README.md
 ```
@@ -284,4 +284,5 @@ ea2de66 feat(agents): add record_agent for pet medical record query
 b1378b6 feat(supervisor,docs): route record intent; document pet identity and record query
 27e1e1f docs: add end-user guide (features and usage)
 99e6b53 docs: link user guide from README
+4866036 docs: add development log (features, decisions, install assets, uninstall guide)
 ```
