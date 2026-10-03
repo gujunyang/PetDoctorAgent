@@ -1,8 +1,8 @@
-"""PetDoctorAgent 入口：Supervisor + Worker 多 Agent 问诊系统（含记忆系统）。
+"""PetDoctorAgent 入口：Supervisor + Worker 多 Agent 问诊系统（含记忆与 MCP）。
 
 用法：
-    python agent.py --user alice            # 新会话（thread_id 自动生成 uuid4）
-    python agent.py --user alice --session <id>   # 复用已有会话
+    python agent.py --user alice                 # 新会话（thread_id 自动生成 uuid4）
+    python agent.py --user alice --session <id>  # 复用已有会话
 """
 
 import argparse
@@ -28,7 +28,8 @@ def main() -> None:
     parser.add_argument("--session", default=None, help="会话 ID（thread_id），默认生成 uuid4")
     args = parser.parse_args()
 
-    # 默认按 DATABASE_URL 创建 PostgresSaver / PostgresStore（不可用则回退内存）
+    # 默认按 DATABASE_URL 创建 PostgresSaver / PostgresStore（不可用则回退内存）；
+    # 并在初始化时拉取 MCP 工具（桥接为同步工具）合并到各 Agent。
     app = build_graph()
 
     session_id = args.session or memory.new_session_id()

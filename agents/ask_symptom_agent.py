@@ -1,10 +1,11 @@
 """问诊 Worker Agent：收集症状信息，基于 RAG 知识库给出初步诊断。
 
 两阶段设计（规避 DeepSeek 思考模式下强制 tool_choice 导致工具死循环的问题）：
-1. Agent 阶段：挂载 pet_knowledge_search 工具，自由调用后产出自然语言答复；
+1. Agent 阶段：挂载 pet_knowledge_search（及 MCP 病历工具），自由调用后产出自然语言答复；
 2. 抽取阶段：用 json_mode 结构化输出把答复抽取为 ``SymptomAssessment``。
 
-记忆 / RAG 接入：节点把长期记忆中的宠物档案与已有 rag_context 注入 Agent 输入。
+接入：长期记忆（宠物档案）与已有 rag_context 注入 Agent 输入；
+工具支持在 build_graph 时通过 ``configure_agent`` 动态合并 MCP 工具。
 """
 
 from typing import Any
@@ -25,6 +26,7 @@ ASK_SYMPTOM_PROMPT = """你是宠物问诊专家。
 2. 再逐步询问症状细节（出现时间、频率、伴随症状、饮食与排泄情况等）。
 3. 信息不足时在答复中提出追问，不要在信息不足时强行下诊断。
 4. 若发现中毒、误食、大量出血、呼吸困难、抽搐、意识丧失等紧急情况，在答复中明确提示尽快就医。
+5. 如可用，调用 get_pet_medical_record 查询宠物既往病史作为诊断参考。
 
 RAG 使用要求：
 - 在给出诊断建议前，必须调用 pet_knowledge_search 工具检索相关知识。
@@ -34,14 +36,24 @@ RAG 使用要求：
 请用简洁、专业的中文给出结论（症状、可能疾病、置信度、护理建议）。
 """
 
-_ASK_SYMPTOM_AGENT = create_agent(
-    get_llm(),
-    tools=[pet_knowledge_search],
-    system_prompt=ASK_SYMPTOM_PROMPT,
-    name="ask_symptom_agent",
-)
 
+def _build_agent(extra_tools: list[Any] | None = None) -> Any:
+    return create_agent(
+        get_llm(),
+        tools=[pet_knowledge_search, *(extra_tools or [])],
+        system_prompt=ASK_SYMPTOM_PROMPT,
+        name="ask_symptom_agent",
+    )
+
+
+_ASK_SYMPTOM_AGENT = _build_agent()
 _ASK_SYMPTOM_EXTRACTOR = get_llm().with_structured_output(SymptomAssessment, method="json_mode")
+
+
+def configure_agent(extra_tools: list[Any] | None = None) -> None:
+    """用合并后的工具列表（含 MCP 工具）重建 Agent。"""
+    global _ASK_SYMPTOM_AGENT
+    _ASK_SYMPTOM_AGENT = _build_agent(extra_tools)
 
 
 def _build_agent_input(state: PetClinicState) -> dict:

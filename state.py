@@ -61,6 +61,7 @@ class SupervisorDecision(BaseModel):
         "ask_symptom_agent",
         "recommend_product_agent",
         "safe_check_agent",
+        "appointment_agent",
         "FINISH",
     ] = Field(description="下一个要调用的 Agent；FINISH 表示直接结束")
     direct_response: str = Field(
