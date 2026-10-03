@@ -22,8 +22,13 @@
 
 ```
               ┌──────────────────────────────────────────────┐
- START ──────▶│ load_memory  (PostgresStore: 宠物档案/用户信息) │
+ START ──────▶│ load_memory  (PostgresStore: 用户信息)          │
               └───────────────────────┬──────────────────────┘
+                                      ▼
+                            ┌───────────────────┐
+                            │   identify_pet    │  确认"这次是哪只宠物"：查库/建档、
+                            │ 宠物识别+记忆核对   │  载入档案与以往案例；未识别则追问并结束本轮
+                            └─────────┬─────────┘
                                       ▼
                             ┌───────────────────┐
                             │    supervisor     │  ① 上下文摘要压缩(≥20 条)
@@ -41,12 +46,18 @@
 ```
 
 - **State**：`petdoctor/state.py:PetClinicState`（`messages / pet_profile / symptoms / diagnosis /
-  product_recommendations / safety_flag / next_agent / rag_context / session_summary`）。
+  product_recommendations / safety_flag / next_agent / rag_context / session_summary /
+  active_pet_id / pet_draft / pet_history`）。
+- **宠物识别**：每段会话先经 `identify_pet` 确认「这次是哪只宠物」——按名字（或编号）核对
+  长期记忆；命中则载入档案+以往案例，未命中则引导补全信息后建档。
 - **路由**：Supervisor 仅在新用户回合调用 LLM 判断意图；Worker 返回后按状态确定性推进，避免重复派发。
+- **病历查询**：`record_agent` 汇总当前宠物的基本档案、既往问诊记录与 MCP 门诊病历
+  （用户说“查看XX的病历”即可；给出显式编号如 `PET-001` 时会查询 MCP 病历）。
 - **MCP 工具映射**：
   - `ask_symptom_agent` ← `get_pet_medical_record`
   - `recommend_product_agent` ← `check_product_stock`
   - `appointment_agent` ← `check_appointment_slots` / `create_appointment`
+  - `record_agent` ← `get_pet_medical_record`
 
 ---
 
@@ -186,6 +197,14 @@ powershell -ExecutionPolicy Bypass -File scripts\start_mcp.ps1
 ---
 
 ## 核心模块
+
+### 宠物识别与记忆核对（`petdoctor/identity.py`）
+
+- 每段会话确认「这次是哪只宠物」，按名字（可带编号）在用户名下核对：
+  - 命中 → 载入档案 + 该宠物以往问诊记录（注入问诊 Agent 辅助推理）；
+  - 未命中但已给出名字 + 物种 → 自动建档（`PET-xxxxxx`）；
+  - 信息不足 → 暂存草稿（`pet_draft`）并追问，本轮结束等用户补充。
+- 会话内识别一次后记住，后续轮次不再追问；问诊记录按宠物隔离存储（`pets/<pet_id>/history`）。
 
 ### 记忆系统（`petdoctor/memory.py`）
 
