@@ -32,7 +32,9 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from petdoctor import memory
-from petdoctor.agents import appointment, ask_symptom, recommend_product
+from petdoctor.agents import appointment, ask_symptom, recommend_product, record
+from petdoctor.agents.record import record_node
+from petdoctor.identity import identify_pet_node
 from petdoctor.agents.appointment import appointment_node
 from petdoctor.agents.ask_symptom import ask_symptom_node
 from petdoctor.agents.recommend_product import recommend_product_node
@@ -46,6 +48,7 @@ WORKER_NODES = {
     "recommend_product_agent",
     "safe_check_agent",
     "appointment_agent",
+    "record_agent",
 }
 
 # MCP 工具 -> 目标 Agent 的映射
@@ -129,6 +132,11 @@ def route_from_supervisor(state: PetClinicState) -> str:
     return next_agent if next_agent in WORKER_NODES else END
 
 
+def route_after_identify(state: PetClinicState) -> str:
+    """已识别宠物则进入 Supervisor；否则（已追问用户）结束本轮等待回答。"""
+    return "supervisor" if state.get("active_pet_id") else END
+
+
 def load_memory_node(state: PetClinicState, config: RunnableConfig) -> dict:
     """执行前从长期记忆读取用户/宠物档案并注入 State。"""
     user_id = memory.user_id_from_config(config)
@@ -150,6 +158,7 @@ def _configure_agents(mcp_tools: list[Any]) -> None:
     ask_symptom.configure_agent(mcp_client.select_tools(mcp_tools, MCP_MEDICAL_TOOLS))
     recommend_product.configure_agent(mcp_client.select_tools(mcp_tools, MCP_PRODUCT_TOOLS))
     appointment.configure_agent(mcp_client.select_tools(mcp_tools, MCP_APPOINTMENT_TOOLS))
+    record.configure_tools(mcp_tools)
 
 
 def _resolve_memory(checkpointer: Any, store: Any) -> tuple[Any, Any]:
@@ -170,14 +179,23 @@ def _assemble(checkpointer: Any, store: Any) -> Any:
     workflow = StateGraph(PetClinicState)
 
     workflow.add_node("load_memory", load_memory_node)
+    workflow.add_node("identify_pet", identify_pet_node)
     workflow.add_node("supervisor", supervisor_node)
     workflow.add_node("ask_symptom_agent", ask_symptom_node)
     workflow.add_node("recommend_product_agent", recommend_product_node)
     workflow.add_node("safe_check_agent", safe_check_node)
     workflow.add_node("appointment_agent", appointment_node)
+    workflow.add_node("record_agent", record_node)
 
     workflow.add_edge(START, "load_memory")
-    workflow.add_edge("load_memory", "supervisor")
+    workflow.add_edge("load_memory", "identify_pet")
+
+    # 先确认「这次是哪只宠物」；未识别则结束本轮（已追问用户）
+    workflow.add_conditional_edges(
+        "identify_pet",
+        route_after_identify,
+        {"supervisor": "supervisor", END: END},
+    )
 
     workflow.add_conditional_edges(
         "supervisor",
@@ -187,6 +205,7 @@ def _assemble(checkpointer: Any, store: Any) -> Any:
             "recommend_product_agent": "recommend_product_agent",
             "safe_check_agent": "safe_check_agent",
             "appointment_agent": "appointment_agent",
+            "record_agent": "record_agent",
             END: END,
         },
     )
@@ -195,6 +214,7 @@ def _assemble(checkpointer: Any, store: Any) -> Any:
     workflow.add_edge("recommend_product_agent", "supervisor")
     workflow.add_edge("appointment_agent", "supervisor")
     workflow.add_edge("safe_check_agent", END)
+    workflow.add_edge("record_agent", END)
 
     return workflow.compile(checkpointer=checkpointer, store=store)
 
