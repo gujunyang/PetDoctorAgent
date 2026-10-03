@@ -27,16 +27,33 @@ SUPERVISOR_PROMPT = """你是一个宠物店问诊系统的分诊调度员。你
 3. 如果用户只是打招呼或闲聊，直接回复
 4. 如果上一轮是问诊Agent的输出，调用 safe_check_agent
 
-当前宠物档案：{pet_profile}
+当前宠物档案：{pet_info}
 """
+
+
+def _format_pet_info(pet_profile: Any) -> str:
+    """把宠物档案 dict 格式化为可读的一句话。"""
+    if not pet_profile or not isinstance(pet_profile, dict):
+        return "暂无档案"
+
+    species = pet_profile.get("species") or "未知物种"
+    breed = pet_profile.get("breed") or ""
+    age = pet_profile.get("age") or ""
+    allergies = pet_profile.get("allergies") or "无"
+    if isinstance(allergies, (list, tuple)):
+        allergies = "、".join(str(a) for a in allergies) or "无"
+
+    name = f"{species} {breed}".strip()
+    age_part = f"{age}岁" if age else "年龄未知"
+    return f"{name}，{age_part}，过敏史：{allergies}"
 
 
 @dynamic_prompt
 def _supervisor_prompt(request: ModelRequest) -> str:
-    """从共享状态中读取宠物档案，动态生成 System Prompt。"""
+    """从共享状态中读取宠物档案（长期记忆），动态生成 System Prompt。"""
     state: Any = request.state or {}
     pet_profile = state.get("pet_profile") if hasattr(state, "get") else None
-    return SUPERVISOR_PROMPT.format(pet_profile=pet_profile or "暂无档案")
+    return SUPERVISOR_PROMPT.format(pet_info=_format_pet_info(pet_profile))
 
 
 _SUPERVISOR_AGENT = create_agent(

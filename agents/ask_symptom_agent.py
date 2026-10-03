@@ -1,14 +1,16 @@
 """问诊 Worker Agent：收集症状信息，基于 RAG 知识库给出初步诊断。
 
 两阶段设计（规避 DeepSeek 思考模式下强制 tool_choice 导致工具死循环的问题）：
-1. Agent 阶段：仅挂载 pet_knowledge_search 工具，自由调用后产出自然语言答复；
+1. Agent 阶段：挂载 pet_knowledge_search 工具，自由调用后产出自然语言答复；
 2. 抽取阶段：用 json_mode 结构化输出把答复抽取为 ``SymptomAssessment``。
+
+记忆 / RAG 接入：节点把长期记忆中的宠物档案与已有 rag_context 注入 Agent 输入。
 """
 
 from typing import Any
 
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
 from config import get_llm
@@ -21,9 +23,13 @@ ASK_SYMPTOM_PROMPT = """你是宠物问诊专家。
 行为要求：
 1. 先确认宠物基本信息（品种、年龄、体重等），若档案缺失应主动询问。
 2. 再逐步询问症状细节（出现时间、频率、伴随症状、饮食与排泄情况等）。
-3. 需要医学知识时调用 pet_knowledge_search 工具检索知识库。
-4. 信息不足时在答复中提出追问，不要在信息不足时强行下诊断。
-5. 若发现中毒、大量出血、呼吸困难、抽搐、意识丧失等紧急情况，在答复中明确提示尽快就医。
+3. 信息不足时在答复中提出追问，不要在信息不足时强行下诊断。
+4. 若发现中毒、误食、大量出血、呼吸困难、抽搐、意识丧失等紧急情况，在答复中明确提示尽快就医。
+
+RAG 使用要求：
+- 在给出诊断建议前，必须调用 pet_knowledge_search 工具检索相关知识。
+- 检索关键词应从用户描述的症状中提取（如"狗 抓痒 脱毛"）。
+- 将检索结果作为诊断依据，在回答中注明信息来源。
 
 请用简洁、专业的中文给出结论（症状、可能疾病、置信度、护理建议）。
 """
@@ -36,6 +42,21 @@ _ASK_SYMPTOM_AGENT = create_agent(
 )
 
 _ASK_SYMPTOM_EXTRACTOR = get_llm().with_structured_output(SymptomAssessment, method="json_mode")
+
+
+def _build_agent_input(state: PetClinicState) -> dict:
+    """把宠物档案与已有 rag_context 注入 Agent 输入。"""
+    messages: list[Any] = list(state.get("messages", []))
+    context: list[str] = []
+
+    pet_profile = state.get("pet_profile")
+    if pet_profile:
+        context.append(f"当前宠物档案：{pet_profile}")
+    if state.get("rag_context"):
+        context.append(f"已有知识库检索上下文（供参考）：\n{state['rag_context']}")
+    if context:
+        messages = [SystemMessage(content="\n\n".join(context)), *messages]
+    return {"messages": messages}
 
 
 def _collect_rag_context(messages: list[Any]) -> str:
@@ -81,8 +102,8 @@ def _extract_assessment(answer: str, messages: list[Any]) -> SymptomAssessment |
 
 
 def ask_symptom_node(state: PetClinicState, config: RunnableConfig) -> dict:
-    """问诊节点：产出症状列表与初步诊断。"""
-    result = _ASK_SYMPTOM_AGENT.invoke({"messages": state["messages"]}, config)
+    """问诊节点：产出症状列表与初步诊断，并将 RAG 结果写入 rag_context。"""
+    result = _ASK_SYMPTOM_AGENT.invoke(_build_agent_input(state), config)
     messages = result.get("messages", [])
     answer = _last_ai_text(messages)
     rag_context = _collect_rag_context(messages)
