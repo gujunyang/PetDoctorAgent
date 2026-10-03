@@ -7,7 +7,7 @@
 - store：``VectorStore``（SQLite，RAGMill 默认）
 
 产物路径由 ``config.RAG_DB_PATH`` 定义（默认 data/rag/pet_knowledge.db），
-供 ``tools/rag_tool.py`` 中的 Agent 检索工具调用。
+供 ``petdoctor/tools/rag.py`` 中的 Agent 检索工具调用。
 
 用法：
     python scripts/build_rag.py            # 库为空则构建，已存在则跳过
@@ -23,7 +23,7 @@ from pathlib import Path
 # 允许以 `python scripts/build_rag.py` 直接运行时导入项目根目录模块
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from config import (  # noqa: E402
+from petdoctor.config import (  # noqa: E402
     MANUAL_DIR,
     RAG_CHUNK_SIZE,
     RAG_DB_PATH,

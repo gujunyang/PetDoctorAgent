@@ -31,15 +31,15 @@ from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
-import memory
-from agents import appointment_agent, ask_symptom_agent, recommend_product_agent
-from agents.appointment_agent import appointment_node
-from agents.ask_symptom_agent import ask_symptom_node
-from agents.recommend_product_agent import recommend_product_node
-from agents.safe_check_agent import safe_check_node
-from agents.supervisor import supervisor_node
-from state import PetClinicState
-from tools import mcp_client
+from petdoctor import memory
+from petdoctor.agents import appointment, ask_symptom, recommend_product
+from petdoctor.agents.appointment import appointment_node
+from petdoctor.agents.ask_symptom import ask_symptom_node
+from petdoctor.agents.recommend_product import recommend_product_node
+from petdoctor.agents.safe_check import safe_check_node
+from petdoctor.agents.supervisor import supervisor_node
+from petdoctor.state import PetClinicState
+from petdoctor.tools import mcp_client
 
 WORKER_NODES = {
     "ask_symptom_agent",
@@ -147,9 +147,9 @@ def load_memory_node(state: PetClinicState, config: RunnableConfig) -> dict:
 
 def _configure_agents(mcp_tools: list[Any]) -> None:
     """把 MCP 工具按名称合并到对应 Agent 的 tools。"""
-    ask_symptom_agent.configure_agent(mcp_client.select_tools(mcp_tools, MCP_MEDICAL_TOOLS))
-    recommend_product_agent.configure_agent(mcp_client.select_tools(mcp_tools, MCP_PRODUCT_TOOLS))
-    appointment_agent.configure_agent(mcp_client.select_tools(mcp_tools, MCP_APPOINTMENT_TOOLS))
+    ask_symptom.configure_agent(mcp_client.select_tools(mcp_tools, MCP_MEDICAL_TOOLS))
+    recommend_product.configure_agent(mcp_client.select_tools(mcp_tools, MCP_PRODUCT_TOOLS))
+    appointment.configure_agent(mcp_client.select_tools(mcp_tools, MCP_APPOINTMENT_TOOLS))
 
 
 def _resolve_memory(checkpointer: Any, store: Any) -> tuple[Any, Any]:

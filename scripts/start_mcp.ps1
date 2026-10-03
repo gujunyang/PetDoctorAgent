@@ -5,4 +5,4 @@ Set-Location (Join-Path $PSScriptRoot '..')
 $venvPython = Join-Path $PWD '.venv\Scripts\python.exe'
 $python = if (Test-Path $venvPython) { $venvPython } else { 'python' }
 
-& $python -m mcp_server.server
+& $python -m petdoctor.mcp_server.server

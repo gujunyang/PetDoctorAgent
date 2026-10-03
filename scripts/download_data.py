@@ -23,7 +23,7 @@ from datasets import load_dataset
 # 允许以 `python scripts/download_data.py` 直接运行时导入项目根目录模块
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from config import RAW_DIR  # noqa: E402
+from petdoctor.config import RAW_DIR  # noqa: E402
 
 SOURCES = [
     {"name": "karenwky/pet-health-symptoms-dataset", "split": "train"},

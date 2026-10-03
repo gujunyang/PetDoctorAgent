@@ -1,8 +1,8 @@
 """PetDoctorAgent 入口：Supervisor + Worker 多 Agent 问诊系统（含记忆与 MCP）。
 
 用法：
-    python agent.py --user alice                 # 新会话（thread_id 自动生成 uuid4）
-    python agent.py --user alice --session <id>  # 复用已有会话
+    python main.py --user alice                 # 新会话（thread_id 自动生成 uuid4）
+    python main.py --user alice --session <id>  # 复用已有会话
 """
 
 import argparse
@@ -10,8 +10,8 @@ import os
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-import memory
-from graph import build_graph
+from petdoctor import memory
+from petdoctor.graph import build_graph
 
 
 def _print_answer(result: dict) -> None:

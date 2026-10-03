@@ -40,7 +40,7 @@
                                                     (safe/warning 写入历史)
 ```
 
-- **State**：`state.py:PetClinicState`（`messages / pet_profile / symptoms / diagnosis /
+- **State**：`petdoctor/state.py:PetClinicState`（`messages / pet_profile / symptoms / diagnosis /
   product_recommendations / safety_flag / next_agent / rag_context / session_summary`）。
 - **路由**：Supervisor 仅在新用户回合调用 LLM 判断意图；Worker 返回后按状态确定性推进，避免重复派发。
 - **MCP 工具映射**：
@@ -54,31 +54,33 @@
 
 ```
 PetDoctorAgent/
-├── agent.py                     # 入口（CLI）
-├── graph.py                     # 图组装 + 执行轨迹日志(TraceLogger)
-├── state.py                     # PetClinicState + 结构化输出模型
-├── config.py                    # 环境变量 / LLM / RAG 路径配置
-├── memory.py                    # 记忆系统（PostgresSaver + PostgresStore，含内存回退）
-├── agents/
-│   ├── supervisor.py            # 分诊调度 + 对话摘要压缩
-│   ├── ask_symptom_agent.py     # 问诊（RAG Top-3 注入 + 病历工具）
-│   ├── recommend_product_agent.py  # 产品推荐（RAG + 库存工具）
-│   ├── appointment_agent.py     # 预约（MCP 工具）
-│   └── safe_check_agent.py      # 安全审查（规则 + LLM）
-├── tools/
-│   ├── rag_tool.py              # pet_knowledge_search（RAGMill 检索 + 中文翻译）
-│   └── mcp_client.py            # MCP 客户端（异步工具 → 同步桥接）
-├── mcp_server/
-│   └── server.py                # 宠物店业务 MCP Server（streamable-http）
+├── petdoctor/                    # 应用包
+│   ├── __init__.py
+│   ├── config.py                 # 环境变量 / LLM / RAG 路径配置
+│   ├── state.py                  # PetClinicState + 结构化输出模型
+│   ├── memory.py                 # 记忆系统（PostgresSaver + PostgresStore，含内存回退）
+│   ├── graph.py                  # 图组装 + 执行轨迹日志(TraceLogger)
+│   ├── agents/                   # Supervisor + Worker Agents
+│   │   ├── supervisor.py         # 分诊调度 + 对话摘要压缩
+│   │   ├── ask_symptom.py        # 问诊（RAG Top-3 注入 + 病历工具）
+│   │   ├── recommend_product.py  # 产品推荐（RAG + 库存工具）
+│   │   ├── appointment.py        # 预约（MCP 工具）
+│   │   └── safe_check.py         # 安全审查（规则 + LLM）
+│   ├── tools/
+│   │   ├── rag.py                # pet_knowledge_search（RAGMill 检索 + 中文翻译）
+│   │   └── mcp_client.py         # MCP 客户端（异步工具 → 同步桥接）
+│   └── mcp_server/
+│       └── server.py             # 宠物店业务 MCP Server（streamable-http）
+├── main.py                       # 入口（CLI）
 ├── scripts/
-│   ├── download_data.py         # 下载 HuggingFace 数据 → data/raw/
-│   ├── build_rag.py             # 构建 RAGMill 向量库 → data/rag/
-│   ├── start_mcp.sh / .ps1      # 启动 MCP Server
-│   └── pg.ps1                   # 便携版 PostgreSQL 启停（Windows）
+│   ├── download_data.py          # 下载 HuggingFace 数据 → data/raw/
+│   ├── build_rag.py              # 构建 RAGMill 向量库 → data/rag/
+│   ├── start_mcp.sh / .ps1       # 启动 MCP Server
+│   └── pg.ps1                    # 便携版 PostgreSQL 启停（Windows）
 ├── data/
-│   ├── raw/                     # 原始语料（不入库）
-│   ├── manual/                  # 人工补充资料（README 有说明）
-│   └── rag/                     # 向量库 pet_knowledge.db（不入库）
+│   ├── raw/                      # 原始语料（不入库）
+│   ├── manual/                   # 人工补充资料
+│   └── rag/                      # 向量库 pet_knowledge.db（不入库）
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -155,9 +157,9 @@ powershell -ExecutionPolicy Bypass -File scripts\start_mcp.ps1
 ### 7. 运行
 
 ```powershell
-.\.venv\Scripts\python.exe agent.py --user alice
+.\.venv\Scripts\python.exe main.py --user alice
 # 复用会话：
-.\.venv\Scripts\python.exe agent.py --user alice --session <session-id>
+.\.venv\Scripts\python.exe main.py --user alice --session <session-id>
 ```
 
 `thread_id` 默认自动生成 uuid4（长度 < 255）。输入 `q` 退出。
@@ -185,7 +187,7 @@ powershell -ExecutionPolicy Bypass -File scripts\start_mcp.ps1
 
 ## 核心模块
 
-### 记忆系统（`memory.py`）
+### 记忆系统（`petdoctor/memory.py`）
 
 - Namespace 设计：
   - `("users", user_id, "profile")` 用户基本信息
@@ -194,7 +196,7 @@ powershell -ExecutionPolicy Bypass -File scripts\start_mcp.ps1
 - `load_memory` 节点在每轮开始注入宠物档案；`safe_check_agent` 在 `safe`/`warning` 时写回历史。
 - 未配置/连接失败自动回退 `InMemorySaver` / `InMemoryStore`。
 
-### RAG（`tools/rag_tool.py` + `scripts/build_rag.py`）
+### RAG（`petdoctor/tools/rag.py` + `scripts/build_rag.py`）
 
 - RAGMill：`ingest → chunk → embed → store`，SQLite 向量库，本地 ONNX embedding（离线）。
 - 多语言模型支持中英文检索；检索结果可查询时翻译为中文（`PET_RAG_TRANSLATE`）。
@@ -213,10 +215,10 @@ MCP 工具是异步专属，`mcp_client.load_mcp_tools()` 将其桥接为可同�
 
 ### 上下文工程
 
-- **摘要压缩**：`messages ≥ 20` 时将历史摘要为 `[历史对话摘要]`，仅保留最近 6 条（`agents/supervisor.py`）。
-- **Top-3 RAG 注入**：问诊节点只注入最相关 3 条（`agents/ask_symptom_agent.py`）。
+- **摘要压缩**：`messages ≥ 20` 时将历史摘要为 `[历史对话摘要]`，仅保留最近 6 条（`petdoctor/agents/supervisor.py`）。
+- **Top-3 RAG 注入**：问诊节点只注入最相关 3 条（`petdoctor/agents/ask_symptom.py`）。
 - **职责隔离**：各 Agent 的 system prompt 含明确「职责边界」，不越界。
-- **执行轨迹**：`graph.py:TraceLogger` 记录每个节点开始/结束时间与输出；
+- **执行轨迹**：`petdoctor/graph.py:TraceLogger` 记录每个节点开始/结束时间与输出；
   `build_graph(trace=True)`（默认）通过 `with_config({"callbacks":[...]})` 附加。
 
 ---
