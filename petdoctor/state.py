@@ -52,6 +52,9 @@ class PetClinicState(TypedDict):
     next_agent: NotRequired[str]  # Supervisor 路由决策
     rag_context: NotRequired[str]  # RAG 检索到的上下文
     session_summary: NotRequired[str]  # 会话摘要（用于上下文压缩）
+    active_pet_id: NotRequired[str]  # 本会话已识别的宠物 ID
+    pet_draft: NotRequired[dict]  # 建档过程中暂存的宠物信息
+    pet_history: NotRequired[list[dict]]  # 该宠物以往问诊记录（辅助推理）
 
 
 class SupervisorDecision(BaseModel):
@@ -62,6 +65,7 @@ class SupervisorDecision(BaseModel):
         "recommend_product_agent",
         "safe_check_agent",
         "appointment_agent",
+        "record_agent",
         "FINISH",
     ] = Field(description="下一个要调用的 Agent；FINISH 表示直接结束")
     direct_response: str = Field(
