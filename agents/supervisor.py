@@ -8,11 +8,16 @@ from typing import Any
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRequest, dynamic_prompt
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
 from config import get_llm
 from state import PetClinicState, SupervisorDecision
+
+# 对话摘要（上下文压缩）参数
+SUMMARY_THRESHOLD = 20  # 消息数达到该值触发摘要
+KEEP_RECENT = 6  # 摘要后保留的最近消息数
 
 SUPERVISOR_PROMPT = """你是一个宠物店问诊系统的分诊调度员。你的职责是分析用户意图并路由到对应的专家Agent。
 
@@ -68,34 +73,81 @@ _SUPERVISOR_AGENT = create_agent(
 )
 
 
+def _message_text(message: Any) -> str:
+    content = getattr(message, "content", "")
+    return content if isinstance(content, str) else str(content)
+
+
+def _summarize(messages: list[Any]) -> str:
+    """调用 LLM 对旧消息做 3-5 句摘要。"""
+    transcript = "\n".join(_message_text(message) for message in messages)
+    prompt = (
+        "请用3-5句话总结以下宠物问诊对话的关键信息，"
+        "包括：宠物基本信息、已描述的症状、已给出的诊断、用户关注点：\n" + transcript
+    )
+    response = get_llm().invoke(prompt)
+    return _message_text(response)
+
+
+def summarize_if_needed(state: PetClinicState) -> tuple[dict, list[Any]]:
+    """消息超过阈值时压缩上下文。
+
+    Returns:
+        (state 更新字典, 供 Supervisor 使用的消息列表)。未触发时更新为空字典。
+    """
+    messages = list(state.get("messages", []))
+    if len(messages) < SUMMARY_THRESHOLD:
+        return {}, messages
+
+    summary = _summarize(messages[:-KEEP_RECENT])
+    recent = messages[-KEEP_RECENT:]
+    summary_message = SystemMessage(content=f"[历史对话摘要] {summary}")
+
+    compressed = [RemoveMessage(id=REMOVE_ALL_MESSAGES), summary_message, *recent]
+    working = [summary_message, *recent]
+    return {"messages": compressed, "session_summary": summary}, working
+
+
 def supervisor_node(state: PetClinicState, config: RunnableConfig) -> dict:
     """Supervisor 节点：产出 ``next_agent`` 决策，必要时附上直接回复。
 
     为避免「worker → supervisor」循环中重复派发同一 worker：
     - 仅当最后一条是用户消息（新一轮）时调用 LLM 判断意图；
     - worker 执行完返回后，按状态确定性推进：问诊/推荐已产出则转安全审查，审查完成则结束。
+
+    上下文工程：消息达到 ``SUMMARY_THRESHOLD`` 条时，先压缩历史为摘要再决策。
     """
-    messages = state.get("messages", [])
-    last = messages[-1] if messages else None
+    summary_updates, working_messages = summarize_if_needed(state)
+    last = working_messages[-1] if working_messages else None
     is_new_turn = isinstance(last, HumanMessage)
 
     if not is_new_turn:
+        updates = dict(summary_updates)
         if state.get("safety_flag"):
-            return {"next_agent": "FINISH"}
-        if state.get("diagnosis") or state.get("product_recommendations"):
-            return {"next_agent": "safe_check_agent"}
-        return {"next_agent": "FINISH"}
+            updates["next_agent"] = "FINISH"
+        elif state.get("diagnosis") or state.get("product_recommendations"):
+            updates["next_agent"] = "safe_check_agent"
+        else:
+            updates["next_agent"] = "FINISH"
+        return updates
 
     result = _SUPERVISOR_AGENT.invoke(
-        {"messages": messages, "pet_profile": state.get("pet_profile", {})},
+        {"messages": working_messages, "pet_profile": state.get("pet_profile", {})},
         config,
     )
     decision = result.get("structured_response")
 
+    updates = dict(summary_updates)
     if decision is None:
-        return {"next_agent": "FINISH"}
+        updates["next_agent"] = "FINISH"
+        return updates
 
-    updates: dict = {"next_agent": decision.next_agent}
+    updates["next_agent"] = decision.next_agent
     if decision.direct_response:
-        updates["messages"] = [AIMessage(content=decision.direct_response)]
+        reply = AIMessage(content=decision.direct_response)
+        if "messages" in summary_updates:
+            # 摘要已替换消息列表，直接把回复追加到压缩后的列表
+            updates["messages"] = [*summary_updates["messages"], reply]
+        else:
+            updates["messages"] = [reply]
     return updates

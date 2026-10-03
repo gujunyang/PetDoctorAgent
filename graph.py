@@ -23,8 +23,11 @@ MCP 工具是异步工具，``tools/mcp_client.load_mcp_tools()`` 会将其桥�
 因此整图保持同步，使用 ``app.invoke(...)`` 调用即可。
 """
 
+import logging
+import time
 from typing import Any
 
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
@@ -49,6 +52,75 @@ WORKER_NODES = {
 MCP_MEDICAL_TOOLS = {"get_pet_medical_record"}
 MCP_PRODUCT_TOOLS = {"check_product_stock"}
 MCP_APPOINTMENT_TOOLS = {"check_appointment_slots", "create_appointment"}
+
+
+logger = logging.getLogger("petdoctor.trace")
+
+
+def setup_logging(level: int = logging.INFO) -> None:
+    """配置根日志（供执行轨迹日志使用）。"""
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+
+def _truncate(value: Any, limit: int = 300) -> str:
+    text = repr(value)
+    return text if len(text) <= limit else text[:limit] + "...(truncated)"
+
+
+class TraceLogger(BaseCallbackHandler):
+    """记录每个节点（chain）的开始/结束时间与输出。"""
+
+    def __init__(self, trace_logger: logging.Logger | None = None) -> None:
+        self.logger = trace_logger or logger
+        self._started: dict[Any, tuple[str, float]] = {}
+
+    def _name(self, serialized: Any, metadata: Any) -> str:
+        if isinstance(serialized, dict) and serialized.get("name"):
+            return str(serialized["name"])
+        if isinstance(metadata, dict) and metadata.get("langgraph_node"):
+            return str(metadata["langgraph_node"])
+        return "chain"
+
+    def on_chain_start(
+        self,
+        serialized: Any,
+        inputs: Any,
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        tags: Any = None,
+        metadata: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        name = self._name(serialized, metadata)
+        self._started[run_id] = (name, time.perf_counter())
+        self.logger.info("Node started: %s", name)
+
+    def on_chain_end(
+        self,
+        outputs: Any,
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        name, started_at = self._started.pop(run_id, ("chain", None))
+        elapsed = time.perf_counter() - started_at if started_at else 0.0
+        self.logger.info("Node ended: %s (%.3fs) outputs=%s", name, elapsed, _truncate(outputs))
+
+    def on_chain_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        name, _ = self._started.pop(run_id, ("chain", None))
+        self.logger.error("Node error: %s: %s", name, error)
 
 
 def route_from_supervisor(state: PetClinicState) -> str:
@@ -127,14 +199,21 @@ def _assemble(checkpointer: Any, store: Any) -> Any:
     return workflow.compile(checkpointer=checkpointer, store=store)
 
 
-def build_graph(checkpointer: Any = None, store: Any = None) -> Any:
+def build_graph(checkpointer: Any = None, store: Any = None, trace: bool = True) -> Any:
     """同步构建入口。
 
     Args:
         checkpointer: 短期记忆存储器；None 时按 DATABASE_URL 创建 PostgresSaver。
         store: 长期记忆存储；None 时按 DATABASE_URL 创建 PostgresStore。
+        trace: 是否附加执行轨迹日志回调。``compile()`` 不接受 callbacks，
+            故通过 ``with_config({"callbacks": [...]})`` 附加（等价于编译期传入）。
     """
     checkpointer, store = _resolve_memory(checkpointer, store)
     mcp_tools = mcp_client.load_mcp_tools()
     _configure_agents(mcp_tools)
-    return _assemble(checkpointer, store)
+
+    graph = _assemble(checkpointer, store)
+    if trace:
+        setup_logging()
+        return graph.with_config({"callbacks": [TraceLogger()]})
+    return graph

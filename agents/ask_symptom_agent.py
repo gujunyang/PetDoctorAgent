@@ -33,6 +33,10 @@ RAG 使用要求：
 - 检索关键词应从用户描述的症状中提取（如"狗 抓痒 脱毛"）。
 - 将检索结果作为诊断依据，在回答中注明信息来源。
 
+职责边界（只做问诊）：
+- 你只负责问诊与初步诊断，不进行任何产品/用药推荐。
+- 如需产品推荐，交由产品推荐 Agent 处理，不要在本节点输出推荐话术。
+
 请用简洁、专业的中文给出结论（症状、可能疾病、置信度、护理建议）。
 """
 
@@ -69,6 +73,29 @@ def _build_agent_input(state: PetClinicState) -> dict:
     if context:
         messages = [SystemMessage(content="\n\n".join(context)), *messages]
     return {"messages": messages}
+
+
+def _get_last_user_message(state: PetClinicState) -> str:
+    for message in reversed(state.get("messages", [])):
+        if isinstance(message, HumanMessage) and isinstance(message.content, str):
+            return message.content
+    return ""
+
+
+def inject_rag_context(state: PetClinicState) -> dict:
+    """预检索：用最后一条用户消息做 RAG，只保留 Top-3 结果写入 rag_context。
+
+    只注入前 3 条检索结果，控制注入到 Agent 的上下文长度。
+    """
+    query = _get_last_user_message(state)
+    if not query:
+        return {}
+    try:
+        context = pet_knowledge_search.invoke({"query": query, "top_k": 3})
+    except Exception:
+        return {}
+    context = context if isinstance(context, str) else str(context)
+    return {"rag_context": context} if context.strip() else {}
 
 
 def _collect_rag_context(messages: list[Any]) -> str:
@@ -114,11 +141,15 @@ def _extract_assessment(answer: str, messages: list[Any]) -> SymptomAssessment |
 
 
 def ask_symptom_node(state: PetClinicState, config: RunnableConfig) -> dict:
-    """问诊节点：产出症状列表与初步诊断，并将 RAG 结果写入 rag_context。"""
-    result = _ASK_SYMPTOM_AGENT.invoke(_build_agent_input(state), config)
+    """问诊节点：预注入 Top-3 RAG 上下文，产出症状列表与初步诊断。"""
+    rag_updates = inject_rag_context(state)
+    working_state: dict = {**state, **rag_updates}
+
+    result = _ASK_SYMPTOM_AGENT.invoke(_build_agent_input(working_state), config)
     messages = result.get("messages", [])
     answer = _last_ai_text(messages)
-    rag_context = _collect_rag_context(messages)
+    # 只保留注入的 Top-3；未注入时回退到子 Agent 的工具返回
+    rag_context = rag_updates.get("rag_context") or _collect_rag_context(messages)
 
     assessment = _extract_assessment(answer, state["messages"])
     if assessment is None:
