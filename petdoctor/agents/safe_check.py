@@ -10,9 +10,9 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
-import memory
-from config import get_llm
-from state import PetClinicState, SafetyReview
+from petdoctor import memory
+from petdoctor.config import get_llm
+from petdoctor.state import PetClinicState, SafetyReview
 
 EMERGENCY_KEYWORDS = [
     "中毒", "误食", "大量出血", "呼吸困难", "抽搐",

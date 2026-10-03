@@ -14,9 +14,9 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
-from config import get_llm
-from state import PetClinicState, SymptomAssessment
-from tools.rag_tool import pet_knowledge_search
+from petdoctor.config import get_llm
+from petdoctor.state import PetClinicState, SymptomAssessment
+from petdoctor.tools.rag import pet_knowledge_search
 
 ASK_SYMPTOM_PROMPT = """你是宠物问诊专家。
 职责：收集症状信息，并基于 RAG 知识库给出初步诊断。

@@ -14,8 +14,8 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
-from config import get_llm
-from state import PetClinicState
+from petdoctor.config import get_llm
+from petdoctor.state import PetClinicState
 
 APPOINTMENT_PROMPT = """你是宠物店预约助手。
 职责：查询可预约时段、为宠物创建预约、答复门店服务相关问题。

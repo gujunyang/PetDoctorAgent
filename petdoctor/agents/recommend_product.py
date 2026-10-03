@@ -14,9 +14,9 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
-from config import get_llm
-from state import PetClinicState, ProductList
-from tools.rag_tool import pet_knowledge_search
+from petdoctor.config import get_llm
+from petdoctor.state import PetClinicState, ProductList
+from petdoctor.tools.rag import pet_knowledge_search
 
 RECOMMEND_PRODUCT_PROMPT = """你是宠物产品推荐专家，根据用户的宠物症状或诊断结果推荐产品。
 

@@ -12,8 +12,8 @@ from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, Syst
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
-from config import get_llm
-from state import PetClinicState, SupervisorDecision
+from petdoctor.config import get_llm
+from petdoctor.state import PetClinicState, SupervisorDecision
 
 # 对话摘要（上下文压缩）参数
 SUMMARY_THRESHOLD = 20  # 消息数达到该值触发摘要
