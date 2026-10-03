@@ -63,6 +63,13 @@ def _build_agent_input(state: PetClinicState) -> dict:
     pet_profile = state.get("pet_profile")
     if pet_profile:
         context.append(f"当前宠物档案：{pet_profile}")
+    pet_history = state.get("pet_history")
+    if pet_history:
+        rows = "\n".join(
+            f"- {rec.get('date', '')}: 症状={rec.get('symptoms', [])}，诊断={rec.get('diagnosis', {})}"
+            for rec in pet_history
+        )
+        context.append(f"该宠物以往问诊记录（供参考）：\n{rows}")
     if state.get("diagnosis"):
         context.append(f"问诊诊断结果：{state['diagnosis']}")
     if state.get("rag_context"):

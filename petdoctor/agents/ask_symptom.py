@@ -27,6 +27,7 @@ ASK_SYMPTOM_PROMPT = """你是宠物问诊专家。
 3. 信息不足时在答复中提出追问，不要在信息不足时强行下诊断。
 4. 若发现中毒、误食、大量出血、呼吸困难、抽搐、意识丧失等紧急情况，在答复中明确提示尽快就医。
 5. 如可用，调用 get_pet_medical_record 查询宠物既往病史作为诊断参考。
+6. 如上下文中提供了该宠物的以往问诊记录，请结合既往病史与过敏史综合分析，并在结论中体现。
 
 RAG 使用要求：
 - 在给出诊断建议前，必须调用 pet_knowledge_search 工具检索相关知识。
@@ -68,6 +69,13 @@ def _build_agent_input(state: PetClinicState) -> dict:
     pet_profile = state.get("pet_profile")
     if pet_profile:
         context.append(f"当前宠物档案：{pet_profile}")
+    pet_history = state.get("pet_history")
+    if pet_history:
+        rows = "\n".join(
+            f"- {rec.get('date', '')}: 症状={rec.get('symptoms', [])}，诊断={rec.get('diagnosis', {})}"
+            for rec in pet_history
+        )
+        context.append(f"该宠物以往问诊记录（供参考）：\n{rows}")
     if state.get("rag_context"):
         context.append(f"已有知识库检索上下文（供参考）：\n{state['rag_context']}")
     if context:
