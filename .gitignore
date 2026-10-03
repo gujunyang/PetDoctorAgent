@@ -1,0 +1,27 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Type / lint / test caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Large / generated data (rebuild via scripts/)
+data/raw/
+data/rag/
+*.db
+*.sqlite
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
