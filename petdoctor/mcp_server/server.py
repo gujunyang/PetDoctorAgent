@@ -7,7 +7,7 @@
 4. get_pet_medical_record(pet_id)                       查询宠物病历
 
 启动：
-    python -m mcp_server.server
+    python -m petdoctor.mcp_server.server
 默认监听 127.0.0.1:8000，MCP 端点为 http://localhost:8000/mcp
 """
 

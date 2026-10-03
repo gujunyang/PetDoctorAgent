@@ -20,7 +20,7 @@ from typing import Any
 from langchain.tools import tool
 from pydantic import BaseModel, Field
 
-from config import RAG_DB_PATH, RAG_EMBEDDING_MODEL, get_llm
+from petdoctor.config import RAG_DB_PATH, RAG_EMBEDDING_MODEL, get_llm
 
 _lock = threading.Lock()
 _model: Any = None
