@@ -21,6 +21,11 @@ from contextlib import ExitStack
 from datetime import datetime
 from typing import Any
 
+from dotenv import load_dotenv
+
+# 确保独立导入 memory 时也能读到 .env 中的 DATABASE_URL
+load_dotenv()
+
 _stack = ExitStack()
 atexit.register(_stack.close)
 
@@ -125,6 +130,14 @@ def _pets_ns(user_id: str, pet_id: str) -> tuple[str, ...]:
     return ("users", user_id, "pets", pet_id)
 
 
+def _pets_prefix(user_id: str) -> tuple[str, ...]:
+    return ("users", user_id, "pets")
+
+
+def _pet_history_ns(user_id: str, pet_id: str) -> tuple[str, ...]:
+    return ("users", user_id, "pets", pet_id, "history")
+
+
 def _history_ns(user_id: str) -> tuple[str, ...]:
     return ("users", user_id, "history")
 
@@ -155,19 +168,80 @@ def save_pet_profile(user_id: str, pet_profile: dict, pet_id: str = "default") -
     get_store().put(_pets_ns(user_id, pet_id), "profile", pet_profile)
 
 
+def get_pet(user_id: str, pet_id: str) -> dict | None:
+    """按 pet_id 读取宠物档案。"""
+    try:
+        item = get_store().get(_pets_ns(user_id, pet_id), "profile")
+    except Exception:  # noqa: BLE001
+        return None
+    return item.value if item else None
+
+
+def find_pet_by_name(user_id: str, name: str) -> dict | None:
+    """按名字在该用户名下查找宠物（精确匹配优先，其次包含匹配）。"""
+    target = (name or "").strip().lower()
+    if not target:
+        return None
+    try:
+        items = get_store().search(_pets_prefix(user_id), limit=100)
+    except Exception:  # noqa: BLE001
+        return None
+    pets = [item.value for item in items if item.value]
+    for pet in pets:
+        if str(pet.get("name", "")).strip().lower() == target:
+            return pet
+    for pet in pets:
+        if target in str(pet.get("name", "")).strip().lower():
+            return pet
+    return None
+
+
+def create_pet(user_id: str, info: dict) -> str:
+    """为宠物建档，返回 pet_id。"""
+    pet_id = info.get("pet_id") or f"PET-{uuid.uuid4().hex[:6].upper()}"
+    pet = {
+        "pet_id": pet_id,
+        "name": info.get("name", ""),
+        "species": info.get("species", ""),
+        "breed": info.get("breed", ""),
+        "age": info.get("age", ""),
+        "weight": info.get("weight", ""),
+        "allergies": info.get("allergies") or [],
+        "medical_history": info.get("medical_history", ""),
+        "created_at": datetime.now().isoformat(),
+    }
+    save_pet_profile(user_id, pet, pet_id)
+    return pet_id
+
+
+def load_pet_history(user_id: str, pet_id: str, limit: int = 5) -> list[dict]:
+    """读取该宠物以往的问诊记录摘要（用于辅助推理）。"""
+    try:
+        items = get_store().search(_pet_history_ns(user_id, pet_id), limit=limit)
+    except Exception:  # noqa: BLE001
+        return []
+    return [item.value for item in items]
+
+
 def save_diagnosis_summary(state: dict, config: Any, safety_flag: str | None = None) -> str | None:
-    """把本次问诊摘要写入历史记录，返回记录 key。"""
+    """把本次问诊摘要写入历史记录，返回记录 key。
+
+    已识别宠物时写入该宠物名下的历史（``pets/<pet_id>/history``），否则写入用户级历史。
+    """
     user_id = user_id_from_config(config)
+    pet_id = state.get("active_pet_id")
     summary = {
         "date": datetime.now().isoformat(),
+        "pet_id": pet_id,
         "symptoms": state.get("symptoms", []),
         "diagnosis": state.get("diagnosis", {}),
         "safety_flag": safety_flag or state.get("safety_flag", ""),
         "session_summary": state.get("session_summary", ""),
     }
     key = str(uuid.uuid4())
+    namespace = _pet_history_ns(user_id, pet_id) if pet_id else _history_ns(user_id)
     try:
-        get_store().put(_history_ns(user_id), key, summary)
+        get_store().put(namespace, key, summary)
     except Exception as exc:  # noqa: BLE001
         print(f"[memory] 写入问诊历史失败：{exc}")
         return None
