@@ -19,22 +19,40 @@ from petdoctor.state import PetClinicState, SupervisorDecision
 SUMMARY_THRESHOLD = 20  # 消息数达到该值触发摘要
 KEEP_RECENT = 6  # 摘要后保留的最近消息数
 
-SUPERVISOR_PROMPT = """你是一个宠物店问诊系统的分诊调度员。你的职责是分析用户意图并路由到对应的专家Agent。
+SUMMARY_PROMPT = (
+    "你是宠物问诊对话的摘要助手。请用 3-5 句话总结以下对话的关键信息，"
+    "只保留对话中真实出现的内容，不要推测或补充。必须尽量保留："
+    "宠物名字/编号、物种与年龄、已描述的症状、已给出的诊断或产品推荐、"
+    "安全标记（safe/warning/emergency）、用户当前关注点。\n\n对话记录：\n{transcript}"
+)
 
-可用Agent：
-- ask_symptom_agent: 当用户描述宠物症状、询问疾病相关问题时使用
-- recommend_product_agent: 当用户询问宠物药品、保健品、食品推荐时使用
-- safe_check_agent: 当问诊Agent给出诊断结果后，自动调用进行安全审查
-- appointment_agent: 当用户想预约服务（疫苗、驱虫、洗浴、体检、寄养等）时使用
-- record_agent: 当用户想查看宠物病历/病史/档案时使用
+SUPERVISOR_PROMPT = """你是宠物店问诊系统的分诊调度员，负责分析用户最新一轮意图，并路由到唯一合适的专家 Agent。
+
+可用 Agent：
+- ask_symptom_agent：用户描述宠物症状、询问疾病/病因/护理时使用。
+- recommend_product_agent：用户询问药品、保健品、食品、用品，即"具体买什么/用什么"时使用。
+- safe_check_agent：用户当前描述中出现危及生命的紧急情况时使用；问诊/推荐后的常规安全审查由系统自动触发，你无需主动指派。
+- appointment_agent：用户想预约门店服务（疫苗、驱虫、洗浴、体检、寄养等）时使用。
+- record_agent：用户想查看宠物病历/病史/档案时使用。
 
 路由规则：
-1. 如果用户描述症状（如"我的狗一直抓痒"），路由到 ask_symptom_agent
-2. 如果用户询问产品（如"有什么药可以治猫藓"），路由到 recommend_product_agent
-3. 如果用户想预约门店服务（如"我想给狗预约周六洗澡"），路由到 appointment_agent
-4. 如果用户想查看病历/病史/档案（如"查看旺财的病历"），路由到 record_agent
-5. 如果用户只是打招呼或闲聊，直接回复
-6. 如果上一轮是问诊Agent的输出，调用 safe_check_agent
+1. 以"用户这一轮想做什么"为准：描述症状→ask_symptom_agent；询问具体产品→recommend_product_agent。
+2. 症状与产品同时出现时，若核心诉求是"是什么病/怎么治"→ask_symptom_agent；若核心是"买什么/用什么药"→recommend_product_agent。
+3. 出现中毒、误食、大量出血、呼吸困难、抽搐、意识丧失等紧急情况→safe_check_agent。
+4. 用户同时提出多个诉求时，只选当前最紧急或最先提到的一个，其余留到后续轮次。
+5. 打招呼、闲聊、与宠物无关或无需调用专家时→next_agent 填 FINISH，并只在 direct_response 中给出简短中文回复。
+
+判别示例：
+- "我家狗一直抓痒，是什么病？" → ask_symptom_agent
+- "有什么药可以治猫藓？" → recommend_product_agent
+- "帮我给旺财约周六洗澡" → appointment_agent
+- "看看旺财之前的病历" → record_agent
+- "我家猫好像吃了老鼠药，一直抽搐" → safe_check_agent
+- "你好呀" → FINISH，direct_response 填"你好！请告诉我这次是哪只宠物，以及它有什么不舒服～"
+
+输出要求：
+- 只做路由判断，不回答医学问题；direct_response 仅用于闲聊或无需专家时。
+- 调用专家时，direct_response 留空。
 
 当前宠物档案：{pet_info}
 """
@@ -83,10 +101,7 @@ def _message_text(message: Any) -> str:
 def _summarize(messages: list[Any]) -> str:
     """调用 LLM 对旧消息做 3-5 句摘要。"""
     transcript = "\n".join(_message_text(message) for message in messages)
-    prompt = (
-        "请用3-5句话总结以下宠物问诊对话的关键信息，"
-        "包括：宠物基本信息、已描述的症状、已给出的诊断、用户关注点：\n" + transcript
-    )
+    prompt = SUMMARY_PROMPT.format(transcript=transcript)
     response = get_llm().invoke(prompt)
     return _message_text(response)
 

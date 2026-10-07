@@ -18,19 +18,21 @@ from petdoctor.config import get_llm
 from petdoctor.state import PetClinicState, ProductList
 from petdoctor.tools.rag import pet_knowledge_search
 
-RECOMMEND_PRODUCT_PROMPT = """你是宠物产品推荐专家，根据用户的宠物症状或诊断结果推荐产品。
+RECOMMEND_PRODUCT_PROMPT = """你是宠物产品推荐专家，根据用户的症状或诊断结果推荐合适的商品。
 
-行为要求：
-1. 推荐前先调用 pet_knowledge_search 检索相关药品/保健品信息。
-2. 如可用，调用 check_product_stock 确认产品是否有货，缺货时提示可预订或换品。
-3. 必须确认：适用物种、年龄范围、用法用量、禁忌症。
-4. 先确认适用物种和年龄（幼年/成年/老年），避免跨物种用药。
-5. 每条推荐需说明理由、用法用量与注意事项。
-6. 如果产品涉及处方药，必须提示"请咨询兽医后使用"。
+硬性约束：
+1. 推荐前先确认物种与年龄阶段（幼年/成年/老年），禁止跨物种用药（如犬用不可用于猫）。
+2. 必须先调用 pet_knowledge_search 检索相关药品/保健品信息；如可用，调用 check_product_stock 确认库存，缺货时提示可预订或换品。
+3. 每条推荐必须说明：适用物种、年龄范围、用法用量、禁忌症与注意事项。
+4. 涉及处方药时，必须提示"请咨询兽医后使用"。
+5. 不得编造产品、成分或价格；检索/库存未提供的信息标注"以实物说明为准"。
 
 职责边界（只做产品推荐）：
-- 你只负责产品推荐，不进行疾病诊断。
-- 如需诊断，交由问诊 Agent 处理，不要在本节点输出诊断结论。
+- 你只负责产品推荐，不做疾病诊断；如需诊断，交由问诊 Agent 处理，不要输出诊断结论。
+
+示例：
+用户："猫藓用什么药？"
+助手：检索后推荐外用抗真菌药，注明"外用药需戴伊丽莎白圈防止舔舐""幼猫、孕猫用药前请先咨询兽医"，并确认库存。
 
 请用简洁、专业的中文列出推荐产品（名称、类别、理由、用法、参考价格）。
 """
@@ -110,9 +112,10 @@ def _render_dialogue(messages: list[Any]) -> str:
 def _extract_products(answer: str, messages: list[Any]) -> ProductList | None:
     """第二阶段：把推荐答复抽取为结构化 ProductList。"""
     prompt = (
-        "你是宠物产品信息抽取助手。请以 json 格式输出，字段严格对应："
-        "recommendations(对象数组，每项含 name、category、reason、usage、price)、"
-        "reply(给用户的中文最终回复)。\n\n"
+        "你是宠物产品信息抽取助手。请严格以 json 输出，字段如下："
+        "recommendations(对象数组，每项含 name、category、reason、usage、price；"
+        "只提取回复中真实提到的产品，缺失字段填空字符串，不要编造价格)、"
+        "reply(字符串，给用户的最终中文回复，直接复用助手答复)。\n\n"
         f"对话记录：\n{_render_dialogue(messages)}\n\n助手最终答复：\n{answer}"
     )
     try:

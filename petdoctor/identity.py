@@ -47,9 +47,11 @@ def extract_pet_info(text: str) -> dict:
         return {}
     prompt = (
         "请从下面这句话中提取宠物身份信息，以 json 格式输出，字段："
-        "name(名字)、pet_id(编号)、species(物种，如犬/猫)、breed(品种)、"
-        "age(年龄)、weight(体重)、allergies(过敏史字符串数组)。"
-        "没有提到的字段留空，不要臆造。\n\n句子：" + text
+        "name(宠物名字)、pet_id(宠物编号，形如 PET-001 才填)、"
+        "species(物种，规范为'犬'或'猫')、breed(品种)、age(年龄)、weight(体重)、"
+        "allergies(过敏史字符串数组)。"
+        "只提取句中明确提到的信息，没有提到的字段留空；"
+        "不要从第一人称推断主人姓名，不要臆造编号、年龄或体重。\n\n句子：" + text
     )
     try:
         info = _EXTRACTOR.invoke(prompt)
