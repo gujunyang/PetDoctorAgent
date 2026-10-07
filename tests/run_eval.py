@@ -1,4 +1,4 @@
-"""PetDoctorAgent regression evaluator (CLI).
+"""宠医通 regression evaluator (CLI).
 
 Usage
 -----
@@ -40,7 +40,7 @@ def _git_rev() -> str:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="PetDoctorAgent badcase evaluator")
+    parser = argparse.ArgumentParser(description="宠医通 badcase evaluator")
     parser.add_argument("--priority", nargs="+", help="P0/P1/P2/P3")
     parser.add_argument("--category", nargs="+", help="category id, e.g. SAFE-MED EMERG")
     parser.add_argument("--tag", nargs="+", help="tag filter")

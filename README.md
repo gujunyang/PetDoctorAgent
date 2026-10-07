@@ -1,4 +1,6 @@
-# PetDoctorAgent · 宠物问诊多 Agent 系统
+# 宠医通 · 宠物问诊多 Agent 系统
+
+> 一只 AI，看护所有毛孩子。
 
 基于 **LangGraph** 的宠物店问诊助手：由 Supervisor 调度 4 个专家 Agent（问诊 / 产品推荐 / 安全审查 / 病历查询），
 结合 **RAG 知识库**、**PostgreSQL 短期+长期记忆** 与 **MCP 业务工具**，覆盖宠物症状咨询、用药推荐与病历查询场景。
@@ -72,7 +74,7 @@ ask_symptom  recommend    record    safe_check    END
 ## 目录结构
 
 ```
-PetDoctorAgent/
+宠医通/
 ├── petdoctor/                    # 应用包
 │   ├── __init__.py
 │   ├── config.py                 # 环境变量 / LLM / RAG 路径配置
@@ -304,7 +306,8 @@ powershell -ExecutionPolicy Bypass -File scripts\start_mcp.ps1
 ## 测试与评估
 
 项目内置可复现的 **badcase 回归评估体系**（`tests/`），覆盖安全用药、急诊分级、物种差异、
-越界诊断、免责缺失、工具调用、记忆一致性、RAG 幻觉、提示注入、多轮一致性、宠物识别、效率等 13 类场景。
+越界诊断、免责缺失、工具调用、记忆一致性、RAG 幻觉、提示注入、多轮一致性、宠物识别、效率、
+预约/库存拒绝等 14 类场景。
 
 - **回归用例**：`tests/regression/*.yaml`（字段与断言见 `tests/README.md`）
 - **badcase 库**：`tests/badcases/badcases.jsonl`
@@ -318,7 +321,7 @@ powershell -ExecutionPolicy Bypass -File scripts\start_mcp.ps1
 .\.venv\Scripts\python.exe tests\run_eval.py --case SAFE-MED-001 --repeat 3
 ```
 
-**最近一轮结果**（模型 `deepseek-flash`）：61 用例 / 103 运行，总通过率 **96.1%**，
+**最近一轮结果**（模型 `deepseek-flash`，功能下线后）：59 用例 / 101 运行，总通过率 **97.0%**，
 P0 通过率 **95.2%**，P0 失败用例 1（`IDENT-001`：首句急诊被宠物识别门拦截）。
 完整结论与根因见 `reports/EVALUATION_REPORT.md`，修复建议见 `patches/SUGGESTED_FIXES.md`。
 

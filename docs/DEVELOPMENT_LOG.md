@@ -1,17 +1,18 @@
-# 开发记录 · PetDoctorAgent
+# 开发记录 · 宠医通
 
 > 本文档记录项目的功能演进、关键设计决策与踩坑，方便日后查询与修改。
 > 大改动请在此追加条目，并注明对应 commit。
 >
-> 记录日期：2026-10-04 ｜ 仓库：https://github.com/gujunyang/PetDoctorAgent
+> 记录日期：2026-10-04 ｜ 最近更新：2026-10-08 ｜ 仓库：https://github.com/gujunyang/PetDoctorAgent
 
 ---
 
 ## 一、项目定位
 
-基于 **LangGraph** 的宠物店问诊多 Agent 系统：Supervisor 调度 5 个专家 Agent
-（问诊 / 产品推荐 / 预约 / 安全审查 / 病历查询），结合 RAG 知识库、PostgreSQL 短期+长期记忆、
-MCP 业务工具，覆盖症状咨询、用药推荐、门店预约、病历查询与安全兜底。
+基于 **LangGraph** 的宠物店问诊多 Agent 系统：Supervisor 调度 4 个专家 Agent
+（问诊 / 产品推荐 / 安全审查 / 病历查询），结合 RAG 知识库、PostgreSQL 短期+长期记忆、
+MCP 业务工具，覆盖症状咨询、用药推荐、病历查询与安全兜底。
+门店预约与库存查询已下线，命中相关请求统一回复「暂不支持」（`petdoctor/unsupported.py`）。
 
 - 使用者文档：`docs/USER_GUIDE.md`
 - 开发者文档：`README.md`
@@ -32,16 +33,17 @@ MCP 业务工具，覆盖症状咨询、用药推荐、门店预约、病历查�
 | `9555211`~`9de54a3` | 工程化重构：迁移为 `petdoctor/` 包（4 次提交） |
 | `5a06e47`~`b1378b6` | 宠物识别 + 每宠物历史 + 病历查询（7 次提交） |
 | `27e1e1f`,`99e6b53` | 新增使用者手册并从 README 链接 |
-| *（未提交）* | Prompt 工程优化：路由 few-shot、职责边界、抽取字段约束、回归脚本 |
-| *（未提交）* | 新增 badcase 回归评估体系（`tests/`）：61 用例 / 13 类 / badcase 库 / LLM-judge / mock MCP |
-| *（未提交）* | 下线门店预约与库存查询：删除 appointment agent 与 MCP 预约/库存工具，新增「暂不支持」兜底 |
+| `939bc8b`~`2883807` | Prompt 工程优化：路由 few-shot、职责边界、抽取字段约束、`verify_prompts.py` 回归（3 次提交） |
+| `ad01b9a` | 新增 badcase 回归评估体系（`tests/`）：59 用例 / 14 类 / badcase 库 / LLM-judge / mock MCP |
+| `ad01b9a` | 下线门店预约与库存查询：删除 appointment agent 与 MCP 预约/库存工具，新增「暂不支持」兜底 |
+| *（本次）* | 项目更名 **宠医通**（slogan：一只 AI，看护所有毛孩子），同步全部文档标题与入口提示 |
 
 ---
 
 ## 三、当前目录结构
 
 ```
-PetDoctorAgent/
+宠医通/
 ├── petdoctor/                 # 应用包
 │   ├── config.py              # 环境变量 / LLM / RAG 路径
 │   ├── state.py               # PetClinicState + 结构化输出模型
@@ -52,9 +54,9 @@ PetDoctorAgent/
 │   │   ├── supervisor.py      # 分诊调度 + 对话摘要压缩
 │   │   ├── ask_symptom.py     # 问诊（RAG Top-3 + 病历工具）
 │   │   ├── recommend_product.py
-│   │   ├── appointment.py     # 预约（MCP）
 │   │   ├── safe_check.py      # 安全审查（规则 + LLM）
 │   │   └── record.py          # 病历查询（确定性节点）
+│   ├── unsupported.py         # 已下线功能（预约/库存）统一「暂不支持」兜底
 │   ├── tools/
 │   │   ├── rag.py             # pet_knowledge_search（RAGMill + 翻译）
 │   │   └── mcp_client.py      # MCP 客户端（异步工具 → 同步桥接）
@@ -72,10 +74,10 @@ PetDoctorAgent/
 
 ### 1. 多 Agent 架构（Supervisor + Workers）
 
-- 图流程：`START → load_memory → identify_pet → supervisor → {ask_symptom | recommend_product | appointment | record | safe_check} → ...`
+- 图流程：`START → load_memory → identify_pet → supervisor → {ask_symptom | recommend_product | record | safe_check} → ...`
 - Supervisor 使用 `create_agent(..., response_format=SupervisorDecision)` 输出路由决策；
   **仅在新用户回合调用 LLM**，Worker 返回后按状态确定性推进，避免重复派发。
-- `ask_symptom`/`recommend_product`/`appointment` 均采用**两阶段**：工具 Agent 产出文本 → `json_mode` 抽取结构化结果。
+- `ask_symptom`/`recommend_product` 均采用**两阶段**：工具 Agent 产出文本 → `json_mode` 抽取结构化结果。
 - 相关文件：`petdoctor/agents/*.py`、`petdoctor/graph.py`、`petdoctor/state.py`。
 
 ### 2. RAG 知识库管道
@@ -105,8 +107,7 @@ PetDoctorAgent/
 ### 5. MCP 业务工具
 
 - `petdoctor/mcp_server/server.py`（FastMCP，`streamable-http`，`127.0.0.1:8000`，端点 `/mcp`）暴露：
-  - `check_appointment_slots(date)`、`create_appointment(pet_name, service, datetime)`
-  - `check_product_stock(product_name)`、`get_pet_medical_record(pet_id)`
+  - `get_pet_medical_record(pet_id)`（预约/库存工具已下线）
 - `petdoctor/tools/mcp_client.py`：`get_mcp_tools()`（异步）；`load_mcp_tools()` 把**异步 MCP 工具桥接为可同步调用**，使整图保持同步（`app.invoke`）。
 - 工具映射与注入：`graph._configure_agents()` 按名称合并到对应 Agent。
 
@@ -306,6 +307,10 @@ b1378b6 feat(supervisor,docs): route record intent; document pet identity and re
 27e1e1f docs: add end-user guide (features and usage)
 99e6b53 docs: link user guide from README
 4866036 docs: add development log (features, decisions, install assets, uninstall guide)
+939bc8b refactor(prompts): tighten agent prompts with clear boundaries and few-shot examples
+227e6b7 test(prompts): add static and live route regression script
+2883807 docs: document prompt engineering and verification workflow
+ad01b9a feat(eval): add regression and judge evaluation harness
 ```
 
 ---
@@ -315,14 +320,14 @@ b1378b6 feat(supervisor,docs): route record intent; document pet identity and re
 ### 目标与架构
 
 为多 Agent 系统建立可复现、可回归的 badcase 评估：**规则断言 + LLM-as-judge + 人工** 三层，
-覆盖 13 类场景。运行器通过回调采集轨迹、注入 mock MCP 工具、使用 InMemory 记忆，保证离线可跑、相互隔离。
+覆盖 14 类场景。运行器通过回调采集轨迹、注入 mock MCP 工具、使用 InMemory 记忆，保证离线可跑、相互隔离。
 
 ```
 tests/
 ├── run_eval.py            # CLI：过滤 / repeat / judge / 报告
 ├── runner/                # harness / mock_tools / trace / assertions / judge / report / loader
-├── regression/*.yaml      # 61 条回归用例
-├── badcases/badcases.jsonl# 16 条 badcase
+├── regression/*.yaml      # 59 条回归用例
+├── badcases/badcases.jsonl# 17 条 badcase
 └── judges/*.md            # 9 份评分标准
 reports/EVALUATION_REPORT.md + eval_latest.json
 patches/SUGGESTED_FIXES.md # 修复建议（未应用）
@@ -398,7 +403,7 @@ patches/SUGGESTED_FIXES.md # 修复建议（未应用）
 ### 12.1 工作阶段
 
 1. **探索与理解**：产出《项目理解摘要》（架构/调用方式/可测试点/风险）。
-2. **测试方案设计**：13 类 badcase 分类、P0–P3 优先级、规则+judge+人工三层评估、指标定义。
+2. **测试方案设计**：13 类 badcase 分类（后新增 UNSUP，共 14 类）、P0–P3 优先级、规则+judge+人工三层评估、指标定义。
 3. **测试资产构建**：回归用例、badcase 库、judge rubric。
 4. **评估运行器**：`tests/run_eval.py` + `tests/runner/*`，支持过滤/repeat/轨迹/mock/judge/报告。
 5. **执行评估**：三轮运行（初始 83.5% → 用例校准 95.1% → 同义词修复 96.1%）。
@@ -471,3 +476,24 @@ patches/SUGGESTED_FIXES.md # 修复建议（未应用）
 - 紧急关键词扩充（毒物名、尿闭、难产、中暑等）。
 - 全局免责兜底、Postgres 连接超时、跨物种用药硬校验、评测 seed 支持、补充 `data/manual/` 语料。
 - 测试报告运行器默认会按时间戳新增文件；如需保持精简，建议后续统一输出到 `reports/EVALUATION_REPORT.md` + `eval_latest.json`。
+
+---
+
+## 十三、项目更名：宠医通（2026-10-08）
+
+### 变更内容
+
+- 项目品牌名由 `PetDoctorAgent` 更改为 **宠医通**，slogan：**一只 AI，看护所有毛孩子。**
+- 同步更新全部文档标题、入口提示与项目代号：
+  - 文档：`README.md`、`docs/USER_GUIDE.md`、`docs/DEVELOPMENT_LOG.md`、`PRD文档/…PRD-V2.md`、
+    `tests/README.md`、`reports/EVALUATION_REPORT.md`。
+  - 代码展示名：`main.py`（docstring / CLI 描述 / 启动提示）、`petdoctor/__init__.py`、`tests/__init__.py`、`tests/run_eval.py`。
+  - 目录树示例：`PetDoctorAgent/` → `宠医通/`。
+- PRD 项目代号字段与文档名称由 `PetDoctorAgent` 更新为 `宠医通`。
+
+### 未改动（有意保留）
+
+- Python 包名 `petdoctor/`、模块与导入路径不变（避免破坏引用）。
+- GitHub 仓库地址 `https://github.com/gujunyang/PetDoctorAgent` 不变（远程路径）。
+- 历史提交信息中的旧名称不变（保持历史真实）。
+

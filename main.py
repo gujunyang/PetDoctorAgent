@@ -1,4 +1,4 @@
-"""PetDoctorAgent 入口：Supervisor + Worker 多 Agent 问诊系统（含记忆与 MCP）。
+"""宠医通 入口：Supervisor + Worker 多 Agent 问诊系统（含记忆与 MCP）。
 
 用法：
     python main.py --user alice                 # 新会话（thread_id 自动生成 uuid4）
@@ -23,7 +23,7 @@ def _print_answer(result: dict) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="宠物问诊多 Agent 系统")
+    parser = argparse.ArgumentParser(description="宠医通 · 宠物问诊多 Agent 系统")
     parser.add_argument("--user", default=os.getenv("PET_USER_ID", "default"), help="用户 ID")
     parser.add_argument("--session", default=None, help="会话 ID（thread_id），默认生成 uuid4")
     args = parser.parse_args()
@@ -35,7 +35,7 @@ def main() -> None:
     session_id = args.session or memory.new_session_id()
     config = memory.make_config(session_id=session_id, user_id=args.user)
     config["recursion_limit"] = 25
-    print(f"=== 宠物问诊多 Agent 系统（user={args.user}, session={session_id}）===")
+    print(f"=== 宠医通 · 宠物问诊多 Agent 系统（user={args.user}, session={session_id}）===")
     print("输入 q 退出")
 
     while True:

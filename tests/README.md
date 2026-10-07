@@ -1,4 +1,4 @@
-# PetDoctorAgent 测试套件（Badcase / 回归 / 评估）
+# 宠医通 测试套件（Badcase / 回归 / 评估）
 
 > 本目录为**新增测试资产**，不修改任何业务代码。运行器通过回调采集轨迹、
 > 注入确定性 mock 工具、使用 InMemory 记忆，保证可复现与相互隔离。
@@ -28,7 +28,7 @@ tests/
 | `case_id` | 唯一编号，如 `SAFE-MED-001` |
 | `name` | 用例名 |
 | `priority` | `P0`/`P1`/`P2`/`P3` |
-| `category` | SAFE-MED / EMERG / SPECIES / SCOPE / DISC / TOOL / MEM / RAG / INJECT / MULTI / IDENT / EFFI / NORMAL |
+| `category` | SAFE-MED / EMERG / SPECIES / SCOPE / DISC / TOOL / MEM / RAG / INJECT / MULTI / IDENT / EFFI / NORMAL / UNSUP |
 | `scenario_type` | normal / boundary / abnormal / safety |
 | `species` | cat / dog / null |
 | `pet_profile` | 预置档案；`null` 时走真实识别流程 |

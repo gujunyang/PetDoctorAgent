@@ -1,4 +1,4 @@
-# PetDoctorAgent · Badcase 测试与评估总报告
+# 宠医通 · Badcase 测试与评估总报告
 
 - 报告日期：2026-10-08（含当天功能下线变更）｜模型：`deepseek-flash` ｜ git：`2883807`
 - 运行命令：`.\.venv\Scripts\python.exe tests\run_eval.py --judge`
