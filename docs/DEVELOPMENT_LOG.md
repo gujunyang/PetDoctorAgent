@@ -32,6 +32,7 @@ MCP 业务工具，覆盖症状咨询、用药推荐、门店预约、病历查�
 | `9555211`~`9de54a3` | 工程化重构：迁移为 `petdoctor/` 包（4 次提交） |
 | `5a06e47`~`b1378b6` | 宠物识别 + 每宠物历史 + 病历查询（7 次提交） |
 | `27e1e1f`,`99e6b53` | 新增使用者手册并从 README 链接 |
+| *（未提交）* | Prompt 工程优化：路由 few-shot、职责边界、抽取字段约束、回归脚本 |
 
 ---
 
@@ -57,7 +58,7 @@ PetDoctorAgent/
 │   │   └── mcp_client.py      # MCP 客户端（异步工具 → 同步桥接）
 │   └── mcp_server/server.py   # 宠物店 MCP Server（streamable-http :8000）
 ├── main.py                    # CLI 入口
-├── scripts/                   # download_data / build_rag / start_mcp.* / pg.ps1
+├── scripts/                   # download_data / build_rag / verify_prompts / start_mcp.* / pg.ps1
 ├── data/{raw,manual,rag}/     # 语料 / 人工资料 / 向量库（raw 与 rag 不入库）
 ├── docs/                      # USER_GUIDE.md / DEVELOPMENT_LOG.md
 ├── requirements.txt  .env.example  README.md
@@ -134,7 +135,21 @@ PetDoctorAgent/
 - Agent 文件去掉冗余 `_agent` 后缀（`ask_symptom.py` / `recommend_product.py` / `appointment.py` / `safe_check.py`）。
 - 统一绝对导入 `from petdoctor.xxx import ...`；`git mv` 保留历史。
 
-### 10. 文档
+### 10. 提示词工程（Prompt Engineering）
+
+- **集中管理**：各 Agent 的 system prompt 为模块顶部命名常量（`SUPERVISOR_PROMPT`、`ASK_SYMPTOM_PROMPT` 等）；
+  摘要 prompt 规范化新增 `SUMMARY_PROMPT`。
+- **统一原则**：角色 + 职责 → 职责边界 → Few-shot 示例 → 输出/事实性约束。
+- **路由**（`supervisor.py`）：删除与代码确定性推进冲突的旧规则（"上一轮问诊→safe_check"）；
+  明确「症状 vs 产品」判别、多意图优先级、`direct_response`/`FINISH` 关系；内嵌 6 条判别示例；
+  紧急情况可直接路由 `safe_check_agent`。
+- **抽取**（`ask_symptom._extract_assessment` / `recommend_product._extract_products` / `identity.extract_pet_info`）：
+  逐字段约束、缺失留空、显式禁止臆造（尤其价格、编号）。
+- **安全**（`safe_check.py`）：补充正反例与药物过量/幼老特殊场景，细化 warning 判定。
+- **回归脚本**：`scripts/verify_prompts.py`——默认离线静态校验（可加载/可格式化/关键约束），
+  `--live` 追加真实 LLM 路由回归（症状/产品/预约/病历/紧急/闲聊 6 用例）。
+
+### 11. 文档
 
 - `README.md`：开发者视角（架构、快速开始、模块、脚本、注意事项）。
 - `docs/USER_GUIDE.md`：使用者手册（功能、示例对话、FAQ、免责声明）。
@@ -155,6 +170,9 @@ PetDoctorAgent/
 | Postgres 安装无管理员权限 | 无法注册系统服务 | 用 EDB 便携二进制 `initdb` + `pg_ctl`（用户态） |
 | Windows PowerShell 5.1 解析非 ASCII 脚本报错 | `scripts/pg.ps1` 解析失败 | 脚本改为纯 ASCII 输出 |
 | 后台启动 MCP/Postgres 导致命令挂起 | 进程持有 stdout 句柄 | 用 `Start-Process -WindowStyle Hidden` 分离，日志重定向到文件 |
+| Prompt 规则与代码逻辑冲突 | 旧 Supervisor prompt 要求"上一轮问诊→safe_check"，但代码已确定性推进，导致重复/矛盾 | 删除该规则；路由 prompt 只针对新用户回合，并补判别示例 |
+| 抽取阶段字段幻觉 | 价格/编号等未提及信息被编造进结构化结果 | 抽取 prompt 逐字段约束 + "缺失留空/不得臆造" + few-shot |
+| 判别类任务不稳定 | 症状 vs 产品、safe/warning 边界模糊 | 在路由与安全 prompt 内嵌正反例；新增 `verify_prompts.py --live` 回归 |
 
 ---
 
@@ -190,7 +208,7 @@ powershell -ExecutionPolicy Bypass -File scripts\start_mcp.ps1     # 或 bash sc
 - [ ] MCP `get_pet_medical_record` 为演示数据（PET-001/PET-002）；用户自建宠物编号与 MCP 不通用。
 - [ ] 病历工具/库存工具依赖 MCP Server 运行；未启动则自动降级。
 - [ ] `pet_history` 目前取最近 5 条；如需全量/分页可扩展。
-- [ ] 无自动化测试（仅手工/脚本验证）；建议补 `tests/`。
+- [ ] 无自动化测试（仅手工/脚本验证）；已有 `scripts/verify_prompts.py` 做提示词回归，建议补 `tests/`。
 - [ ] 未提供宠物档案的“修改”入口（只能新建）。
 
 ---

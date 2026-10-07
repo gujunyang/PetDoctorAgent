@@ -17,6 +17,7 @@
 - **记忆系统**：PostgresSaver（会话短期记忆，按 `thread_id`）+ PostgresStore（跨会话长期记忆）。
 - **MCP 业务工具**：独立的宠物店 MCP Server（streamable-http）提供预约、库存、病历工具。
 - **上下文工程**：对话摘要压缩、Top-3 RAG 注入、Agent 职责隔离、执行轨迹日志。
+- **提示词工程**：角色 + 职责边界、判别类 Few-shot 示例、结构化抽取字段约束，配套回归脚本验证。
 - **安全兜底**：紧急关键词规则匹配 + LLM 风险分级（safe / warning / emergency）。
 
 ---
@@ -92,6 +93,7 @@ PetDoctorAgent/
 ├── scripts/
 │   ├── download_data.py          # 下载 HuggingFace 数据 → data/raw/
 │   ├── build_rag.py              # 构建 RAGMill 向量库 → data/rag/
+│   ├── verify_prompts.py         # 提示词静态校验 + 路由回归（--live）
 │   ├── start_mcp.sh / .ps1       # 启动 MCP Server
 │   └── pg.ps1                    # 便携版 PostgreSQL 启停（Windows）
 ├── data/
@@ -248,6 +250,35 @@ MCP 工具是异步专属，`mcp_client.load_mcp_tools()` 将其桥接为可同�
 - **执行轨迹**：`petdoctor/graph.py:TraceLogger` 记录每个节点开始/结束时间与输出；
   `build_graph(trace=True)`（默认）通过 `with_config({"callbacks":[...]})` 附加。
 
+### 提示词工程
+
+各 Agent 的 system prompt 集中为模块顶部的命名常量（如 `SUPERVISOR_PROMPT`、`ASK_SYMPTOM_PROMPT`），
+遵循统一原则：
+
+- **角色 + 职责**：开头声明角色，再列「只做什么 / 不做什么」。
+- **职责边界**：问诊不推荐、推荐不诊断、安全只分级，避免越界串话。
+- **Few-shot 示例**：路由（Supervisor）与安全分级等判别类 prompt 内嵌正反例，降低误判。
+- **输出约束**：抽取阶段（`*_extract_*`）逐字段约束、缺失留空、显式禁止臆造，配合 `state.py` 的
+  Pydantic 模型保证结构稳定。
+- **事实性约束**：摘要与抽取 prompt 要求「只保留真实出现的内容，不要推测」。
+
+| 模块 | 提示词 | 作用 |
+|------|--------|------|
+| `supervisor.py` | `SUPERVISOR_PROMPT` | 意图路由（含判别示例；紧急情况可直接转安全审查） |
+| `supervisor.py` | `SUMMARY_PROMPT` | 上下文摘要（事实性约束） |
+| `ask_symptom.py` | `ASK_SYMPTOM_PROMPT` | 问诊追问，不推荐产品 |
+| `recommend_product.py` | `RECOMMEND_PRODUCT_PROMPT` | 产品推荐，禁跨物种用药 |
+| `appointment.py` | `APPOINTMENT_PROMPT` | 预约，强调确认与相对日期换算 |
+| `safe_check.py` | `SAFE_CHECK_PROMPT` | 风险分级（含正反例） |
+| `identity.py` | 内联抽取 prompt | 宠物身份信息抽取 |
+
+回归验证：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\verify_prompts.py         # 离线静态校验
+.\.venv\Scripts\python.exe scripts\verify_prompts.py --live  # 含真实 LLM 路由回归
+```
+
 ---
 
 ## 脚本一览
@@ -256,6 +287,7 @@ MCP 工具是异步专属，`mcp_client.load_mcp_tools()` 将其桥接为可同�
 |------|------|
 | `scripts/download_data.py [--limit N]` | 下载 HF 数据集并保存为 `data/raw/{condition}_{index}.txt` |
 | `scripts/build_rag.py [--rebuild]` | 构建/重建 RAGMill 向量库 |
+| `scripts/verify_prompts.py [--live]` | 提示词静态校验；`--live` 执行真实 LLM 路由回归 |
 | `scripts/start_mcp.sh` / `start_mcp.ps1` | 启动 MCP Server |
 | `scripts/pg.ps1 start\|stop\|status\|restart` | 便携版 PostgreSQL 管理（Windows） |
 
