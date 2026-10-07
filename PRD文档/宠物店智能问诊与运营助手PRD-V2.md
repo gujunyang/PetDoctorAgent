@@ -1,6 +1,6 @@
 # 宠医通 · 宠物店智能问诊与运营助手 · 产品需求文档（PRD）
 
-> 一只 AI，看护所有毛孩子。
+> 一位助手，看护所有毛孩子。
 
 > **Product Requirements Document (PRD) · V2.0**
 

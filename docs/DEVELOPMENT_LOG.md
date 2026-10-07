@@ -36,7 +36,7 @@ MCP 业务工具，覆盖症状咨询、用药推荐、病历查询与安全兜�
 | `939bc8b`~`2883807` | Prompt 工程优化：路由 few-shot、职责边界、抽取字段约束、`verify_prompts.py` 回归（3 次提交） |
 | `ad01b9a` | 新增 badcase 回归评估体系（`tests/`）：59 用例 / 14 类 / badcase 库 / LLM-judge / mock MCP |
 | `ad01b9a` | 下线门店预约与库存查询：删除 appointment agent 与 MCP 预约/库存工具，新增「暂不支持」兜底 |
-| *（本次）* | 项目更名 **宠医通**（slogan：一只 AI，看护所有毛孩子），同步全部文档标题与入口提示 |
+| *（本次）* | 项目更名 **宠医通**（slogan：一位助手，看护所有毛孩子），同步全部文档标题与入口提示 |
 
 ---
 
@@ -483,7 +483,7 @@ patches/SUGGESTED_FIXES.md # 修复建议（未应用）
 
 ### 变更内容
 
-- 项目品牌名由 `PetDoctorAgent` 更改为 **宠医通**，slogan：**一只 AI，看护所有毛孩子。**
+- 项目品牌名由 `PetDoctorAgent` 更改为 **宠医通**，slogan：**一位助手，看护所有毛孩子。**
 - 同步更新全部文档标题、入口提示与项目代号：
   - 文档：`README.md`、`docs/USER_GUIDE.md`、`docs/DEVELOPMENT_LOG.md`、`PRD文档/…PRD-V2.md`、
     `tests/README.md`、`reports/EVALUATION_REPORT.md`。
