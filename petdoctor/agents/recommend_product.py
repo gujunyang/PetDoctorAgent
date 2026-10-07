@@ -1,11 +1,11 @@
 """产品推荐 Worker Agent：根据诊断结果或用户需求推荐产品。
 
 两阶段设计（规避 DeepSeek 思考模式下强制 tool_choice 导致工具死循环的问题）：
-1. Agent 阶段：挂载 pet_knowledge_search 与 MCP 库存工具，自由调用后产出自然语言答复；
+1. Agent 阶段：挂载 pet_knowledge_search，自由调用后产出自然语言答复；
 2. 抽取阶段：用 json_mode 结构化输出把答复抽取为 ``ProductList``。
 
-接入：宠物档案、诊断结果与已有 rag_context 注入 Agent 输入；
-工具支持在 build_graph 时通过 ``configure_agent`` 合并 MCP 工具（check_product_stock）。
+接入：宠物档案、诊断结果与已有 rag_context 注入 Agent 输入。
+说明：库存查询功能已下线，不再调用任何库存工具。
 """
 
 from typing import Any
@@ -22,10 +22,10 @@ RECOMMEND_PRODUCT_PROMPT = """你是宠物产品推荐专家，根据用户的�
 
 硬性约束：
 1. 推荐前先确认物种与年龄阶段（幼年/成年/老年），禁止跨物种用药（如犬用不可用于猫）。
-2. 必须先调用 pet_knowledge_search 检索相关药品/保健品信息；如可用，调用 check_product_stock 确认库存，缺货时提示可预订或换品。
+2. 必须先调用 pet_knowledge_search 检索相关药品/保健品信息；检索未覆盖的信息标注"以实物说明为准"。
 3. 每条推荐必须说明：适用物种、年龄范围、用法用量、禁忌症与注意事项。
 4. 涉及处方药时，必须提示"请咨询兽医后使用"。
-5. 不得编造产品、成分或价格；检索/库存未提供的信息标注"以实物说明为准"。
+5. 不得编造产品、成分或价格；不提供库存、是否缺货等门店实时信息。
 
 职责边界（只做产品推荐）：
 - 你只负责产品推荐，不做疾病诊断；如需诊断，交由问诊 Agent 处理，不要输出诊断结论。
@@ -52,7 +52,7 @@ _RECOMMEND_PRODUCT_EXTRACTOR = get_llm().with_structured_output(ProductList, met
 
 
 def configure_agent(extra_tools: list[Any] | None = None) -> None:
-    """用合并后的工具列表（含 MCP 工具 check_product_stock）重建 Agent。"""
+    """用合并后的工具列表重建 Agent（默认仅 pet_knowledge_search）。"""
     global _RECOMMEND_PRODUCT_AGENT
     _RECOMMEND_PRODUCT_AGENT = _build_agent(extra_tools)
 
@@ -125,7 +125,7 @@ def _extract_products(answer: str, messages: list[Any]) -> ProductList | None:
 
 
 def recommend_product_node(state: PetClinicState, config: RunnableConfig) -> dict:
-    """产品推荐节点：产出结构化推荐列表，并将 RAG/库存结果写入 rag_context。"""
+    """产品推荐节点：产出结构化推荐列表，并将 RAG 结果写入 rag_context。"""
     result = _RECOMMEND_PRODUCT_AGENT.invoke(_build_agent_input(state), config)
     messages = result.get("messages", [])
     answer = _last_ai_text(messages)

@@ -1,11 +1,13 @@
 """Supervisor + Worker 多 Agent 问诊系统的图组装（含记忆系统与 MCP 工具）。
 
 流程：
-    START -> load_memory -> supervisor
+    START -> load_memory -> identify_pet -> supervisor
     supervisor --(条件边: next_agent)--> ask_symptom_agent / recommend_product_agent
-                                        / safe_check_agent / appointment_agent / END
-    ask_symptom_agent / recommend_product_agent / appointment_agent --> supervisor（循环）
-    safe_check_agent --> END
+                                        / safe_check_agent / record_agent / END
+    ask_symptom_agent / recommend_product_agent --> supervisor（循环）
+    safe_check_agent / record_agent --> END
+
+    门店预约与库存查询已下线：由 identify_pet / supervisor 统一回复「暂不支持」。
 
 记忆：
     - 短期记忆 checkpointer（PostgresSaver）按 thread_id 保存会话状态；
@@ -14,9 +16,8 @@
 
 MCP：
     图初始化时从 MCP Server 获取业务工具，按名称合并到对应 Agent：
-    - ask_symptom_agent       <- get_pet_medical_record
-    - recommend_product_agent <- check_product_stock
-    - appointment_agent       <- check_appointment_slots / create_appointment
+    - ask_symptom_agent <- get_pet_medical_record
+    - record_agent      <- get_pet_medical_record
     MCP 服务未启动时自动降级（跳过 MCP 工具，图仍可用）。
 
 MCP 工具是异步工具，``tools/mcp_client.load_mcp_tools()`` 会将其桥接为同步工具，
@@ -32,10 +33,9 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from petdoctor import memory
-from petdoctor.agents import appointment, ask_symptom, recommend_product, record
+from petdoctor.agents import ask_symptom, recommend_product, record
 from petdoctor.agents.record import record_node
 from petdoctor.identity import identify_pet_node
-from petdoctor.agents.appointment import appointment_node
 from petdoctor.agents.ask_symptom import ask_symptom_node
 from petdoctor.agents.recommend_product import recommend_product_node
 from petdoctor.agents.safe_check import safe_check_node
@@ -47,14 +47,11 @@ WORKER_NODES = {
     "ask_symptom_agent",
     "recommend_product_agent",
     "safe_check_agent",
-    "appointment_agent",
     "record_agent",
 }
 
 # MCP 工具 -> 目标 Agent 的映射
 MCP_MEDICAL_TOOLS = {"get_pet_medical_record"}
-MCP_PRODUCT_TOOLS = {"check_product_stock"}
-MCP_APPOINTMENT_TOOLS = {"check_appointment_slots", "create_appointment"}
 
 
 logger = logging.getLogger("petdoctor.trace")
@@ -156,8 +153,6 @@ def load_memory_node(state: PetClinicState, config: RunnableConfig) -> dict:
 def _configure_agents(mcp_tools: list[Any]) -> None:
     """把 MCP 工具按名称合并到对应 Agent 的 tools。"""
     ask_symptom.configure_agent(mcp_client.select_tools(mcp_tools, MCP_MEDICAL_TOOLS))
-    recommend_product.configure_agent(mcp_client.select_tools(mcp_tools, MCP_PRODUCT_TOOLS))
-    appointment.configure_agent(mcp_client.select_tools(mcp_tools, MCP_APPOINTMENT_TOOLS))
     record.configure_tools(mcp_tools)
 
 
@@ -184,7 +179,6 @@ def _assemble(checkpointer: Any, store: Any) -> Any:
     workflow.add_node("ask_symptom_agent", ask_symptom_node)
     workflow.add_node("recommend_product_agent", recommend_product_node)
     workflow.add_node("safe_check_agent", safe_check_node)
-    workflow.add_node("appointment_agent", appointment_node)
     workflow.add_node("record_agent", record_node)
 
     workflow.add_edge(START, "load_memory")
@@ -204,7 +198,6 @@ def _assemble(checkpointer: Any, store: Any) -> Any:
             "ask_symptom_agent": "ask_symptom_agent",
             "recommend_product_agent": "recommend_product_agent",
             "safe_check_agent": "safe_check_agent",
-            "appointment_agent": "appointment_agent",
             "record_agent": "record_agent",
             END: END,
         },
@@ -212,7 +205,6 @@ def _assemble(checkpointer: Any, store: Any) -> Any:
 
     workflow.add_edge("ask_symptom_agent", "supervisor")
     workflow.add_edge("recommend_product_agent", "supervisor")
-    workflow.add_edge("appointment_agent", "supervisor")
     workflow.add_edge("safe_check_agent", END)
     workflow.add_edge("record_agent", END)
 

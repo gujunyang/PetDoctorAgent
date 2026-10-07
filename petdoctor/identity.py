@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from petdoctor import memory
 from petdoctor.config import get_llm
 from petdoctor.state import PetClinicState
+from petdoctor.unsupported import unsupported_reply_for_state
 
 
 class PetInfo(BaseModel):
@@ -69,6 +70,11 @@ def _merge_draft(draft: dict, info: dict) -> dict:
 
 def identify_pet_node(state: PetClinicState, config: RunnableConfig) -> dict:
     """识别当前宠物；未识别则追问（不设 active_pet_id，由条件边结束本轮）。"""
+    # 0) 已下线的功能（预约/库存）：直接明确告知暂不支持，不进入识别与路由
+    unsupported = unsupported_reply_for_state(state)
+    if unsupported:
+        return {"messages": [AIMessage(content=unsupported)]}
+
     user_id = memory.user_id_from_config(config)
 
     # 1) 本会话已识别 → 直接刷新档案与历史案例

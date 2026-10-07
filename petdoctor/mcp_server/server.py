@@ -1,10 +1,10 @@
 """宠物店业务工具 MCP Server（streamable_http）。
 
 暴露工具：
-1. check_appointment_slots(date)                        查询可预约时段
-2. create_appointment(pet_name, service, datetime)      创建预约
-3. check_product_stock(product_name)                    查询产品库存
-4. get_pet_medical_record(pet_id)                       查询宠物病历
+1. get_pet_medical_record(pet_id)                       查询宠物病历
+
+说明：门店预约（check_appointment_slots / create_appointment）与库存查询
+（check_product_stock）功能已下线，相关工具不再提供。
 
 启动：
     python -m petdoctor.mcp_server.server
@@ -13,7 +13,6 @@
 
 from __future__ import annotations
 
-import datetime as dt
 import json
 
 from mcp.server.fastmcp import FastMCP
@@ -26,18 +25,6 @@ mcp = FastMCP(
 )
 
 # ── 演示用内存数据 ──────────────────────────────────────────────────────────
-
-_SLOTS = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"]
-_APPOINTMENTS: dict[str, list[dict]] = {}
-
-_PRODUCT_STOCK: dict[str, int] = {
-    "福来恩滴剂": 12,
-    "拜宠清驱虫片": 0,
-    "猫藓喷剂": 7,
-    "复合益生菌": 20,
-    "关节软骨素": 5,
-    "低敏处方粮": 3,
-}
 
 _MEDICAL_RECORDS: dict[str, dict] = {
     "PET-001": {
@@ -64,63 +51,6 @@ _MEDICAL_RECORDS: dict[str, dict] = {
 
 
 # ── 工具定义 ────────────────────────────────────────────────────────────────
-
-@mcp.tool()
-def check_appointment_slots(date: str) -> str:
-    """查询指定日期（格式 YYYY-MM-DD）可预约的时段。"""
-    try:
-        dt.datetime.strptime(date, "%Y-%m-%d")
-    except ValueError:
-        return "日期格式错误，请使用 YYYY-MM-DD。"
-
-    booked = {a["datetime"][11:16] for a in _APPOINTMENTS.get(date, [])}
-    free = [slot for slot in _SLOTS if slot not in booked]
-    if not free:
-        return f"{date} 已无可预约时段。"
-    return f"{date} 可预约时段：{'、'.join(free)}"
-
-
-@mcp.tool()
-def create_appointment(pet_name: str, service: str, datetime: str) -> str:
-    """为宠物创建预约。datetime 格式 YYYY-MM-DD HH:MM。
-
-    service 例如：疫苗、驱虫、洗浴美容、体检、寄养。
-    """
-    try:
-        dt.datetime.strptime(datetime, "%Y-%m-%d %H:%M")
-    except ValueError:
-        return "时间格式错误，请使用 YYYY-MM-DD HH:MM。"
-
-    date, time = datetime.split(" ")
-    if time not in _SLOTS:
-        return f"{time} 不在可预约时段内（{'、'.join(_SLOTS)}）。"
-
-    day_slots = _APPOINTMENTS.setdefault(date, [])
-    if any(a["datetime"] == datetime for a in day_slots):
-        return f"{datetime} 该时段已被预约，请选择其他时段。"
-
-    appointment = {
-        "id": f"APPT-{date.replace('-', '')}-{len(day_slots) + 1:03d}",
-        "pet_name": pet_name,
-        "service": service,
-        "datetime": datetime,
-    }
-    day_slots.append(appointment)
-    return (
-        f"预约成功！宠物：{pet_name}，服务：{service}，时间：{datetime}，"
-        f"预约号：{appointment['id']}。"
-    )
-
-
-@mcp.tool()
-def check_product_stock(product_name: str) -> str:
-    """查询宠物产品的库存数量。"""
-    for name, qty in _PRODUCT_STOCK.items():
-        if product_name in name or name in product_name:
-            status = "（缺货，可预订）" if qty == 0 else ""
-            return f"{name} 当前库存 {qty} 件。{status}"
-    return f"未找到产品「{product_name}」。在售产品：{'、'.join(_PRODUCT_STOCK)}"
-
 
 @mcp.tool()
 def get_pet_medical_record(pet_id: str) -> str:

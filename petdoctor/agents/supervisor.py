@@ -14,6 +14,7 @@ from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
 from petdoctor.config import get_llm
 from petdoctor.state import PetClinicState, SupervisorDecision
+from petdoctor.unsupported import unsupported_reply
 
 # 对话摘要（上下文压缩）参数
 SUMMARY_THRESHOLD = 20  # 消息数达到该值触发摘要
@@ -32,7 +33,6 @@ SUPERVISOR_PROMPT = """你是宠物店问诊系统的分诊调度员，负责分
 - ask_symptom_agent：用户描述宠物症状、询问疾病/病因/护理时使用。
 - recommend_product_agent：用户询问药品、保健品、食品、用品，即"具体买什么/用什么"时使用。
 - safe_check_agent：用户当前描述中出现危及生命的紧急情况时使用；问诊/推荐后的常规安全审查由系统自动触发，你无需主动指派。
-- appointment_agent：用户想预约门店服务（疫苗、驱虫、洗浴、体检、寄养等）时使用。
 - record_agent：用户想查看宠物病历/病史/档案时使用。
 
 路由规则：
@@ -41,11 +41,11 @@ SUPERVISOR_PROMPT = """你是宠物店问诊系统的分诊调度员，负责分
 3. 出现中毒、误食、大量出血、呼吸困难、抽搐、意识丧失等紧急情况→safe_check_agent。
 4. 用户同时提出多个诉求时，只选当前最紧急或最先提到的一个，其余留到后续轮次。
 5. 打招呼、闲聊、与宠物无关或无需调用专家时→next_agent 填 FINISH，并只在 direct_response 中给出简短中文回复。
+6. 门店预约与库存查询功能已下线：此类请求由系统统一回复「暂不支持」，你不做任何处理。
 
 判别示例：
 - "我家狗一直抓痒，是什么病？" → ask_symptom_agent
 - "有什么药可以治猫藓？" → recommend_product_agent
-- "帮我给旺财约周六洗澡" → appointment_agent
 - "看看旺财之前的病历" → record_agent
 - "我家猫好像吃了老鼠药，一直抽搐" → safe_check_agent
 - "你好呀" → FINISH，direct_response 填"你好！请告诉我这次是哪只宠物，以及它有什么不舒服～"
@@ -146,6 +146,18 @@ def supervisor_node(state: PetClinicState, config: RunnableConfig) -> dict:
             updates["next_agent"] = "safe_check_agent"
         else:
             updates["next_agent"] = "FINISH"
+        return updates
+
+    # 已下线功能（预约/库存）：统一回复暂不支持，不派发任何 Worker
+    unsupported = unsupported_reply(_message_text(last))
+    if unsupported:
+        updates = dict(summary_updates)
+        updates["next_agent"] = "FINISH"
+        reply = AIMessage(content=unsupported)
+        if "messages" in summary_updates:
+            updates["messages"] = [*summary_updates["messages"], reply]
+        else:
+            updates["messages"] = [reply]
         return updates
 
     result = _SUPERVISOR_AGENT.invoke(

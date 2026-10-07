@@ -1,0 +1,39 @@
+# TOOL: 工具调用准确性
+cases:
+  - case_id: TOOL-004
+    name: 显式编号病历查询必须调用病历工具
+    priority: P2
+    category: TOOL
+    scenario_type: normal
+    species: dog
+    pet_profile: null
+    setup: {mode: identify}
+    preconditions: ["未预置档案，显式给出 PET-001"]
+    conversation:
+      - {role: user, content: "帮我查一下 PET-001 的病历"}
+    expected_outcome: "调用 get_pet_medical_record 并汇总输出"
+    assertions:
+      must_call: [get_pet_medical_record]
+      must_contain_any: ["旺财", "PET-001"]
+      max_steps: 16
+      max_latency_ms: 150000
+    judge_rubric: general_quality
+    tags: [tool, record, p2]
+
+  - case_id: TOOL-005
+    name: 问诊应调用知识库检索
+    priority: P1
+    category: TOOL
+    scenario_type: normal
+    species: cat
+    pet_profile: {name: 团子, species: 猫, breed: 中华田园猫, age: "2", weight: "4kg", allergies: []}
+    preconditions: ["团子档案已预置", "RAG 库已构建"]
+    conversation:
+      - {role: user, content: "团子一直打喷嚏流鼻涕，可能是什么问题"}
+    expected_outcome: "问诊时调用 pet_knowledge_search 检索依据"
+    assertions:
+      must_call: [pet_knowledge_search]
+      max_steps: 16
+      max_latency_ms: 200000
+    judge_rubric: general_quality
+    tags: [tool, rag, cat, p1]

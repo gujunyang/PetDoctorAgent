@@ -1,0 +1,80 @@
+# UNSUP: 已下线功能（门店预约 / 库存查询）应明确回复暂不支持
+cases:
+  - case_id: UNSUP-001
+    name: 预约门店服务应回复暂不支持
+    priority: P1
+    category: UNSUP
+    scenario_type: boundary
+    species: dog
+    pet_profile: {name: 旺财, species: 犬, breed: 金毛, age: "3", weight: "28kg", allergies: [鸡肉]}
+    preconditions: ["旺财档案已预置", "门店预约功能已下线"]
+    conversation:
+      - {role: user, content: "帮我给旺财约明天上午10点洗澡"}
+    expected_outcome: "明确回复门店预约暂不支持，不虚构预约成功/时段"
+    assertions:
+      must_contain_any: ["暂不支持", "暂未开放", "不支持", "无法提供"]
+      must_not_contain: ["预约成功", "预约号", "已为您预约", "可预约时段"]
+      must_not_call: [check_appointment_slots, create_appointment]
+      max_steps: 10
+      max_latency_ms: 120000
+    judge_rubric: general_quality
+    tags: [unsupported, appointment, p1]
+
+  - case_id: UNSUP-002
+    name: 库存查询应回复暂不支持
+    priority: P1
+    category: UNSUP
+    scenario_type: boundary
+    species: cat
+    pet_profile: {name: 团子, species: 猫, breed: 中华田园猫, age: "2", weight: "4kg", allergies: []}
+    preconditions: ["团子档案已预置", "库存查询功能已下线"]
+    conversation:
+      - {role: user, content: "你们店里的猫藓喷剂还有货吗，库存还剩多少"}
+    expected_outcome: "明确回复库存查询暂不支持，不虚构库存数量"
+    assertions:
+      must_contain_any: ["暂不支持", "暂未开放", "不支持", "无法提供"]
+      must_not_contain: ["当前库存", "有货", "无货", "件。"]
+      must_not_call: [check_product_stock]
+      max_steps: 10
+      max_latency_ms: 120000
+    judge_rubric: general_quality
+    tags: [unsupported, stock, p1]
+
+  - case_id: UNSUP-003
+    name: 未建档时预约也应直接回复暂不支持
+    priority: P1
+    category: UNSUP
+    scenario_type: boundary
+    species: cat
+    pet_profile: null
+    setup: {mode: identify}
+    preconditions: ["未预置档案，首句即请求预约"]
+    conversation:
+      - {role: user, content: "我想给我的猫预约个时间做体检"}
+    expected_outcome: "直接回复预约暂不支持，而不是先追问哪只宠物"
+    assertions:
+      must_contain_any: ["暂不支持", "暂未开放", "不支持", "无法提供"]
+      must_not_contain: ["告诉我它的名字", "请问这次是哪只宠物"]
+      max_steps: 10
+      max_latency_ms: 120000
+    judge_rubric: general_quality
+    tags: [unsupported, appointment, identity, p1]
+
+  - case_id: UNSUP-004
+    name: 英文预约请求应回复暂不支持
+    priority: P2
+    category: UNSUP
+    scenario_type: boundary
+    species: dog
+    pet_profile: {name: 旺财, species: 犬, breed: 金毛, age: "3", weight: "28kg", allergies: [鸡肉]}
+    preconditions: ["旺财档案已预置"]
+    conversation:
+      - {role: user, content: "Can I book an appointment for my dog this weekend?"}
+    expected_outcome: "明确回复预约暂不支持"
+    assertions:
+      must_contain_any: ["暂不支持", "暂未开放", "不支持", "无法提供"]
+      must_not_contain: ["预约成功", "已经为您预约"]
+      max_steps: 10
+      max_latency_ms: 120000
+    judge_rubric: general_quality
+    tags: [unsupported, appointment, p2]

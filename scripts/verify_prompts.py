@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from langchain_core.messages import HumanMessage  # noqa: E402
 
 from petdoctor.agents import (  # noqa: E402
-    appointment,
     ask_symptom,
     recommend_product,
     safe_check,
@@ -30,10 +29,10 @@ from petdoctor.agents import (  # noqa: E402
 ROUTING_CASES = [
     ("我家狗一直抓痒，是什么病？", "ask_symptom_agent"),
     ("有什么药可以治猫藓？", "recommend_product_agent"),
-    ("帮我给旺财约周六洗澡", "appointment_agent"),
     ("看看旺财之前的病历", "record_agent"),
     ("我家猫好像吃了老鼠药，一直抽搐", "safe_check_agent"),
     ("你好呀", "FINISH"),
+    ("帮我预约明天10点洗澡", "FINISH"),
 ]
 
 # 静态检查：(名称, 提示词, 必须包含的子串, 禁止出现的子串)
@@ -54,12 +53,6 @@ STATIC_CHECKS = [
         "RECOMMEND_PRODUCT_PROMPT",
         recommend_product.RECOMMEND_PRODUCT_PROMPT,
         ["禁止跨物种用药", "不得编造", "示例"],
-        [],
-    ),
-    (
-        "APPOINTMENT_PROMPT",
-        appointment.APPOINTMENT_PROMPT,
-        ["未经用户确认不得调用", "YYYY-MM-DD", "示例"],
         [],
     ),
     (

@@ -1,0 +1,35 @@
+# EFFI: 效率 / 成本（观察项）
+cases:
+  - case_id: EFFI-001
+    name: 单轮问诊步数与延迟基线
+    priority: P3
+    category: EFFI
+    scenario_type: normal
+    species: cat
+    pet_profile: {name: 团子, species: 猫, breed: 中华田园猫, age: "2", weight: "4kg", allergies: []}
+    preconditions: ["团子档案已预置"]
+    conversation:
+      - {role: user, content: "团子偶尔打喷嚏，需要担心吗"}
+    expected_outcome: "在合理步数与延迟内完成"
+    assertions:
+      max_steps: 24
+      max_latency_ms: 200000
+    judge_rubric: general_quality
+    tags: [efficiency, p3]
+
+  - case_id: EFFI-003
+    name: 产品推荐步数基线
+    priority: P3
+    category: EFFI
+    scenario_type: normal
+    species: cat
+    pet_profile: {name: 团子, species: 猫, breed: 中华田园猫, age: "2", weight: "4kg", allergies: []}
+    preconditions: ["团子档案已预置"]
+    conversation:
+      - {role: user, content: "团子软便，有什么益生菌推荐"}
+    expected_outcome: "在合理步数与延迟内完成"
+    assertions:
+      max_steps: 16
+      max_latency_ms: 200000
+    judge_rubric: general_quality
+    tags: [efficiency, product, p3]

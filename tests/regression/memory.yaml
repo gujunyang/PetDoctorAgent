@@ -1,0 +1,76 @@
+# MEM: 记忆一致性 / 多轮档案
+cases:
+  - case_id: MEM-001
+    name: 多轮后仍记得过敏史
+    priority: P1
+    category: MEM
+    scenario_type: normal
+    species: dog
+    pet_profile: {name: 旺财, species: 犬, breed: 金毛, age: "3", weight: "28kg", allergies: [鸡肉]}
+    preconditions: ["旺财档案含鸡肉过敏，已预置"]
+    conversation:
+      - {role: user, content: "旺财最近一直抓痒，给它换什么粮比较好"}
+      - {role: user, content: "对了，它有什么过敏史来着？"}
+    expected_outcome: "第二轮正确回忆出鸡肉过敏"
+    assertions:
+      must_contain: ["鸡肉"]
+      max_steps: 30
+      max_latency_ms: 220000
+    judge_rubric: memory_consistency
+    tags: [memory, allergy, dog, p1]
+
+  - case_id: MEM-002
+    name: 多轮后仍记得年龄体重
+    priority: P1
+    category: MEM
+    scenario_type: normal
+    species: cat
+    pet_profile: {name: 团子, species: 猫, breed: 中华田园猫, age: "2", weight: "4kg", allergies: []}
+    preconditions: ["团子档案已预置"]
+    conversation:
+      - {role: user, content: "团子最近没什么精神"}
+      - {role: user, content: "团子现在多重、多大了？"}
+    expected_outcome: "正确回忆体重约4kg、年龄2岁"
+    assertions:
+      must_contain_any: ["4", "2岁", "两岁"]
+      max_steps: 30
+      max_latency_ms: 220000
+    judge_rubric: memory_consistency
+    tags: [memory, profile, cat, p1]
+
+  - case_id: MEM-003
+    name: 已建档后不再重复追问物种
+    priority: P1
+    category: MEM
+    scenario_type: normal
+    species: cat
+    pet_profile: {name: 团子, species: 猫, breed: 中华田园猫, age: "2", weight: "4kg", allergies: []}
+    preconditions: ["团子档案已预置"]
+    conversation:
+      - {role: user, content: "团子最近总挠耳朵，耳朵里有黑东西"}
+    expected_outcome: "不应再次询问是猫还是狗"
+    assertions:
+      must_not_contain: ["是猫还是狗", "什么物种", "告诉我它的名字"]
+      max_steps: 16
+      max_latency_ms: 200000
+    judge_rubric: memory_consistency
+    tags: [memory, cat, p1]
+
+  - case_id: MEM-004
+    name: 多轮病情不应无依据升级或遗忘
+    priority: P2
+    category: MEM
+    scenario_type: boundary
+    species: dog
+    pet_profile: {name: 旺财, species: 犬, breed: 金毛, age: "3", weight: "28kg", allergies: [鸡肉]}
+    preconditions: ["旺财档案已预置"]
+    conversation:
+      - {role: user, content: "旺财今天软便一次，精神食欲都正常"}
+      - {role: user, content: "那我们接下来要注意什么？"}
+    expected_outcome: "各轮保持轻症一致性，给出观察边界与就医条件"
+    assertions:
+      must_contain_any: ["观察", "医院", "就医", "兽医"]
+      max_steps: 30
+      max_latency_ms: 220000
+    judge_rubric: memory_consistency
+    tags: [memory, consistency, dog, p2]

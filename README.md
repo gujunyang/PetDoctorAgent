@@ -1,9 +1,11 @@
 # PetDoctorAgent · 宠物问诊多 Agent 系统
 
-基于 **LangGraph** 的宠物店问诊助手：由 Supervisor 调度 5 个专家 Agent（问诊 / 产品推荐 / 预约 / 安全审查 / 病历查询），
-结合 **RAG 知识库**、**PostgreSQL 短期+长期记忆** 与 **MCP 业务工具**，覆盖宠物症状咨询、用药推荐、门店预约与病历查询场景。
+基于 **LangGraph** 的宠物店问诊助手：由 Supervisor 调度 4 个专家 Agent（问诊 / 产品推荐 / 安全审查 / 病历查询），
+结合 **RAG 知识库**、**PostgreSQL 短期+长期记忆** 与 **MCP 业务工具**，覆盖宠物症状咨询、用药推荐与病历查询场景。
 
 > ⚠️ 本项目仅用于技术演示，不能替代执业兽医诊断；涉及处方药或紧急情况请及时就医。
+>
+> ℹ️ **门店预约与库存查询功能暂未开放**：相关提问会明确回复「暂不支持」。
 
 > 📖 **使用者请阅读 [docs/USER_GUIDE.md](docs/USER_GUIDE.md)（使用手册）；本文档面向开发者。**
 
@@ -11,11 +13,12 @@
 
 ## 功能特性
 
-- **Supervisor + 5 Worker**：多 Agent 协作，按用户意图动态路由（问诊 / 产品推荐 / 预约 / 安全审查 / 病历查询）。
+- **Supervisor + 4 Worker**：多 Agent 协作，按用户意图动态路由（问诊 / 产品推荐 / 安全审查 / 病历查询）。
 - **宠物识别**：每段会话先确认「这次是哪只宠物」，核对档案并载入其历史案例。
 - **RAG 检索增强**：RAGMill 本地向量库（SQLite）+ 多语言 embedding + 查询时中文翻译。
 - **记忆系统**：PostgresSaver（会话短期记忆，按 `thread_id`）+ PostgresStore（跨会话长期记忆）。
-- **MCP 业务工具**：独立的宠物店 MCP Server（streamable-http）提供预约、库存、病历工具。
+- **MCP 业务工具**：独立的宠物店 MCP Server（streamable-http）提供病历查询工具。
+- **暂不支持兜底**：门店预约与库存查询已下线，命中相关请求统一回复「暂不支持」。
 - **上下文工程**：对话摘要压缩、Top-3 RAG 注入、Agent 职责隔离、执行轨迹日志。
 - **提示词工程**：角色 + 职责边界、判别类 Few-shot 示例、结构化抽取字段约束，配套回归脚本验证。
 - **安全兜底**：紧急关键词规则匹配 + LLM 风险分级（safe / warning / emergency）。
@@ -39,16 +42,18 @@
                             │  分诊调度 / 路由    │  ② 结构化输出 next_agent
                             └─────────┬─────────┘
                    条件边 next_agent   │
-   ┌───────────┬───────────┬───────────┬───────────┬───────────┬───────┐
-   ▼           ▼           ▼           ▼           ▼           ▼
-ask_symptom  recommend  appointment  record    safe_check    END
- (问诊)      (产品推荐)   (预约)     (病历查询)  (安全审查)  (闲聊/结束)
-  RAG+病历    RAG+库存    预约工具    档案+MCP    规则+LLM
-   │           │           │           │
-   └───────────┴───────────┴───────────┘
-              返回 supervisor (循环)        safe_check / record → END
-                                            (safe/warning 写入历史)
+    ┌───────────┬───────────┬───────────┬───────────┬───────┐
+    ▼           ▼           ▼           ▼           ▼
+ask_symptom  recommend    record    safe_check    END
+ (问诊)      (产品推荐)   (病历查询)  (安全审查)  (闲聊/结束)
+  RAG+病历    RAG         档案+MCP    规则+LLM
+    │           │           │
+    └───────────┴───────────┘
+               返回 supervisor (循环)        safe_check / record → END
+                                             (safe/warning 写入历史)
 ```
+
+> 预约/库存请求在 `identify_pet` 与 `supervisor` 处被拦截，直接回复「暂不支持」，不进入 Worker。
 
 - **State**：`petdoctor/state.py:PetClinicState`（`messages / pet_profile / symptoms / diagnosis /
   product_recommendations / safety_flag / next_agent / rag_context / session_summary /
@@ -60,8 +65,6 @@ ask_symptom  recommend  appointment  record    safe_check    END
   （用户说“查看XX的病历”即可；给出显式编号如 `PET-001` 时会查询 MCP 病历）。
 - **MCP 工具映射**：
   - `ask_symptom_agent` ← `get_pet_medical_record`
-  - `recommend_product_agent` ← `check_product_stock`
-  - `appointment_agent` ← `check_appointment_slots` / `create_appointment`
   - `record_agent` ← `get_pet_medical_record`
 
 ---
@@ -80,10 +83,10 @@ PetDoctorAgent/
 │   ├── agents/                   # Supervisor + Worker Agents
 │   │   ├── supervisor.py         # 分诊调度 + 对话摘要压缩
 │   │   ├── ask_symptom.py        # 问诊（RAG Top-3 注入 + 病历工具）
-│   │   ├── recommend_product.py  # 产品推荐（RAG + 库存工具）
-│   │   ├── appointment.py        # 预约（MCP 工具）
+│   │   ├── recommend_product.py  # 产品推荐（RAG）
 │   │   ├── safe_check.py         # 安全审查（规则 + LLM）
 │   │   └── record.py             # 病历查询（汇总档案/历史/门诊病历）
+│   ├── unsupported.py            # 已下线功能（预约/库存）统一「暂不支持」兜底
 │   ├── tools/
 │   │   ├── rag.py                # pet_knowledge_search（RAGMill 检索 + 中文翻译）
 │   │   └── mcp_client.py         # MCP 客户端（异步工具 → 同步桥接）
@@ -101,6 +104,13 @@ PetDoctorAgent/
 │   ├── manual/                   # 人工补充资料
 │   └── rag/                      # 向量库 pet_knowledge.db（不入库）
 ├── docs/                         # USER_GUIDE.md / DEVELOPMENT_LOG.md
+├── tests/                        # 测试资产（badcase 库 / 回归用例 / 评估运行器）
+│   ├── run_eval.py               # 评估运行器（过滤 / repeat / 规则断言 / judge / 报告）
+│   ├── regression/               # 回归用例（*.yaml，按类别）
+│   ├── badcases/                 # badcase 库（badcases.jsonl）
+│   ├── judges/                   # LLM-as-judge 评分标准（*.md）
+│   └── runner/                   # 运行器模块（harness / mock_tools / trace / assertions / judge / report）
+├── reports/                      # 评估报告（EVALUATION_REPORT.md + eval_latest.json）
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -235,12 +245,9 @@ powershell -ExecutionPolicy Bypass -File scripts\start_mcp.ps1
 
 | 工具 | 说明 |
 |------|------|
-| `check_appointment_slots(date)` | 查询某天可预约时段（YYYY-MM-DD） |
-| `create_appointment(pet_name, service, datetime)` | 创建预约（YYYY-MM-DD HH:MM） |
-| `check_product_stock(product_name)` | 查询产品库存 |
 | `get_pet_medical_record(pet_id)` | 查询宠物病历 |
 
-MCP 工具是异步专属，`mcp_client.load_mcp_tools()` 将其桥接为可同步调用的工具，整图保持同步。
+> 门店预约与库存查询工具已下线。MCP 工具是异步专属，`mcp_client.load_mcp_tools()` 将其桥接为可同步调用的工具，整图保持同步。
 
 ### 上下文工程
 
@@ -268,9 +275,9 @@ MCP 工具是异步专属，`mcp_client.load_mcp_tools()` 将其桥接为可同�
 | `supervisor.py` | `SUMMARY_PROMPT` | 上下文摘要（事实性约束） |
 | `ask_symptom.py` | `ASK_SYMPTOM_PROMPT` | 问诊追问，不推荐产品 |
 | `recommend_product.py` | `RECOMMEND_PRODUCT_PROMPT` | 产品推荐，禁跨物种用药 |
-| `appointment.py` | `APPOINTMENT_PROMPT` | 预约，强调确认与相对日期换算 |
 | `safe_check.py` | `SAFE_CHECK_PROMPT` | 风险分级（含正反例） |
 | `identity.py` | 内联抽取 prompt | 宠物身份信息抽取 |
+| `unsupported.py` | `UNSUPPORTED_REPLY` | 预约/库存请求统一回复「暂不支持」 |
 
 回归验证：
 
@@ -290,6 +297,30 @@ MCP 工具是异步专属，`mcp_client.load_mcp_tools()` 将其桥接为可同�
 | `scripts/verify_prompts.py [--live]` | 提示词静态校验；`--live` 执行真实 LLM 路由回归 |
 | `scripts/start_mcp.sh` / `start_mcp.ps1` | 启动 MCP Server |
 | `scripts/pg.ps1 start\|stop\|status\|restart` | 便携版 PostgreSQL 管理（Windows） |
+| `tests/run_eval.py [--priority P0] [--category ...] [--repeat N] [--judge]` | Badcase/回归评估运行器（详见 `tests/README.md`） |
+
+---
+
+## 测试与评估
+
+项目内置可复现的 **badcase 回归评估体系**（`tests/`），覆盖安全用药、急诊分级、物种差异、
+越界诊断、免责缺失、工具调用、记忆一致性、RAG 幻觉、提示注入、多轮一致性、宠物识别、效率等 13 类场景。
+
+- **回归用例**：`tests/regression/*.yaml`（字段与断言见 `tests/README.md`）
+- **badcase 库**：`tests/badcases/badcases.jsonl`
+- **运行器**：`tests/run_eval.py`（规则断言 + 可选 LLM-as-judge；注入 mock MCP 工具与 InMemory 记忆，无需启动后台服务）
+- **报告**：`reports/EVALUATION_REPORT.md`（总报告）+ `reports/eval_latest.json`（原始数据）
+
+```powershell
+.\.venv\Scripts\python.exe tests\run_eval.py --list                 # 列出用例
+.\.venv\Scripts\python.exe tests\run_eval.py --judge                # 全量（P0 自动 repeat 3）
+.\.venv\Scripts\python.exe tests\run_eval.py --priority P0 --repeat 5
+.\.venv\Scripts\python.exe tests\run_eval.py --case SAFE-MED-001 --repeat 3
+```
+
+**最近一轮结果**（模型 `deepseek-flash`）：61 用例 / 103 运行，总通过率 **96.1%**，
+P0 通过率 **95.2%**，P0 失败用例 1（`IDENT-001`：首句急诊被宠物识别门拦截）。
+完整结论与根因见 `reports/EVALUATION_REPORT.md`，修复建议见 `patches/SUGGESTED_FIXES.md`。
 
 ---
 
